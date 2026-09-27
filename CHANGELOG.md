@@ -51,6 +51,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The `vulnerabilities` gate passed for the wrong reason. `GOVULN_VERSION` was
+  pinned to `v1.8.0`, which requires Go >= 1.26.0, while the module is pinned to
+  Go 1.23.12. Under the default `GOTOOLCHAIN=auto`, `go install` silently
+  downloaded Go 1.26 and built the scanner with it, so the compiler that actually
+  performed the scan — locally and in CI — appeared nowhere in the repository.
+  The scanner is now pinned to `v1.1.4`, the newest `x/vuln` release that builds
+  with Go 1.23.12, and `GOTOOLCHAIN=local` is declared explicitly in both the
+  `Makefile` and the CI workflow so an incompatible dependency fails loudly
+  instead of quietly changing the compiler. The bump to `actions/setup-go@v7`,
+  whose v6.0.0 release sets `GOTOOLCHAIN=local`, is what surfaced the drift.
 - The `Makefile` was never under version control. A `Makefile` rule in a
   developer's global ignore file (`core.excludesFile`, the qmake/Qt rule) matched
   it, so `git add .` skipped it silently and no commit ever contained it. A fresh
