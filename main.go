@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,7 +45,7 @@ var ErrUsage = errors.New("usage error")
 var ErrUnknownCommand = errors.New("unknown command")
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		slog.Error("kroot failed", "err", err)
 		os.Exit(exitCodeFor(err))
 	}
@@ -65,28 +66,46 @@ func exitCodeFor(err error) int {
 }
 
 // run executes the kroot CLI and returns the first fatal error.
-func run(args []string, out io.Writer) error {
+//
+// stdout carries what the caller asked for — help text on request, the version
+// line. stderr carries diagnostics. A caller that redirects stdout must not
+// receive usage text produced by a failure, and a caller that discards stdout
+// must still be able to tell what went wrong. See
+// docs/enterprise/api-compatibility.md § "Streams".
+func run(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
-	fs.SetOutput(out)
-	fs.Usage = func() { printUsage(out, fs) }
+
+	// flag calls fs.Usage in two situations: an explicit -h, which is a success
+	// and belongs on stdout, and a parse failure, which is a diagnostic and
+	// belongs on stderr. The callback cannot tell them apart, so it renders into
+	// a buffer and run() decides where the text goes. flag's own error line is
+	// discarded because main logs the failure once, structurally, instead of
+	// twice in two different formats on two different streams.
+	var usage bytes.Buffer
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() { printUsage(&usage, fs) }
 
 	showVersion := fs.Bool("version", false, "print the version and exit")
 
 	if err := fs.Parse(args); err != nil {
-		// flag.ErrHelp means the user asked for help and got it: printing usage
-		// and reporting success is what the contract says, and it is what
-		// `kroot help` already did. `-h` failing while `help` succeeded was two
-		// spellings of one request with two different answers.
 		if errors.Is(err, flag.ErrHelp) {
+			// The user asked for help and got it, so the answer is the requested
+			// output: exit 0, text on stdout. `-h` failing while `help` succeeded
+			// was two spellings of one request with two different answers.
+			_, _ = usage.WriteTo(stdout)
 			return nil
 		}
-		// Every other parse failure is a usage error: no amount of retrying
-		// makes -nope a valid flag.
+		// Every other parse failure is a usage error: no amount of retrying makes
+		// -nope a valid flag. The usage text goes to stderr so that redirecting
+		// stdout does not capture help text from a failure. A write failure here
+		// is swallowed for the same reason printUsage swallows them: there is
+		// nowhere left to report it.
+		_, _ = usage.WriteTo(stderr)
 		return fmt.Errorf("%w: parsing flags: %w", ErrUsage, err)
 	}
 
 	if *showVersion {
-		return printVersion(out)
+		return printVersion(stdout)
 	}
 
 	command := "help"
@@ -96,10 +115,10 @@ func run(args []string, out io.Writer) error {
 
 	switch command {
 	case "help":
-		printUsage(out, fs)
+		printUsage(stdout, fs)
 		return nil
 	case "version":
-		return printVersion(out)
+		return printVersion(stdout)
 	default:
 		// Wrapped in ErrUsage as well: an unrecognised command is the caller's
 		// mistake and maps to exit 2, while ErrUnknownCommand still answers

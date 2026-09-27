@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,7 @@ func TestRun(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 
-			err := run(tc.args, &out)
+			err := run(tc.args, &out, io.Discard)
 
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
@@ -76,7 +77,8 @@ func (failingWriter) Write([]byte) (int, error) {
 // TestRunPropagatesFatalWriteError covers the one write failure the CLI can act
 // on: failing to print the version is a runtime failure, so run must report it.
 func TestRunPropagatesFatalWriteError(t *testing.T) {
-	err := run([]string{"version"}, failingWriter{})
+	err := run([]string{"version"}, failingWriter{}, io.Discard)
+
 	if err == nil {
 		t.Fatal("run(version) with a failing writer = nil; want an error")
 	}
@@ -89,7 +91,7 @@ func TestRunPropagatesFatalWriteError(t *testing.T) {
 // write failures are not actionable, because there is nowhere left to report
 // them, so printUsage swallows them by design and run still succeeds.
 func TestRunToleratesHelpWriteError(t *testing.T) {
-	if err := run([]string{"help"}, failingWriter{}); err != nil {
+	if err := run([]string{"help"}, failingWriter{}, io.Discard); err != nil {
 		t.Errorf("run(help) with a failing writer = %v; want nil", err)
 	}
 }
@@ -102,13 +104,16 @@ func TestRunToleratesHelpWriteError(t *testing.T) {
 func TestRunHelpFlagIsNotAnError(t *testing.T) {
 	for _, arg := range []string{"-h", "-help"} {
 		t.Run(arg, func(t *testing.T) {
-			var out bytes.Buffer
+			var out, errOut bytes.Buffer
 
-			if err := run([]string{arg}, &out); err != nil {
+			if err := run([]string{arg}, &out, &errOut); err != nil {
 				t.Errorf("run(%s) error = %v; want nil: help is a success, not a failure", arg, err)
 			}
 			if got := out.String(); !strings.Contains(got, "Usage:") {
-				t.Errorf("run(%s) output = %q; want it to contain %q", arg, got, "Usage:")
+				t.Errorf("run(%s) stdout = %q; want it to contain %q", arg, got, "Usage:")
+			}
+			if got := errOut.String(); got != "" {
+				t.Errorf("run(%s) stderr = %q; want it empty: help is requested output, not a diagnostic", arg, got)
 			}
 		})
 	}
@@ -137,7 +142,7 @@ func TestExitCodesMatchTheDocumentedContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 
-			if got := exitCodeFor(run(tc.args, &out)); got != tc.want {
+			if got := exitCodeFor(run(tc.args, &out, io.Discard)); got != tc.want {
 				t.Errorf("exitCodeFor(run(%v)) = %d; want %d", tc.args, got, tc.want)
 			}
 		})
@@ -148,13 +153,33 @@ func TestExitCodesMatchTheDocumentedContract(t *testing.T) {
 // failure the caller cannot fix by reinvoking must not be reported as exit 2.
 // Here the invocation is correct and only the write fails.
 func TestRuntimeFailureIsNotAUsageError(t *testing.T) {
-	err := run([]string{"version"}, failingWriter{})
+	err := run([]string{"version"}, failingWriter{}, io.Discard)
 
 	if errors.Is(err, ErrUsage) {
 		t.Fatalf("run(version) with a failing writer = %v; must not be a usage error: the invocation was correct", err)
 	}
 	if got := exitCodeFor(err); got != exitFailure {
 		t.Errorf("exitCodeFor(...) = %d; want %d", got, exitFailure)
+	}
+}
+
+// TestUsageFailuresGoToStderr covers the stream half of the CLI contract for
+// callers: a failed invocation must not write to stdout. Before, a bad flag
+// wrote flag's own error line and the whole usage text to stdout, so a caller
+// redirecting stdout captured thirteen lines of help from a failure — while the
+// same failure was logged again, structurally, on stderr.
+func TestUsageFailuresGoToStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	err := run([]string{"-nope"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("run(-nope) = nil; want a usage error")
+	}
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q; want it empty: a failure must not write to stdout", got)
+	}
+	if got := stderr.String(); !strings.Contains(got, "Usage:") {
+		t.Errorf("stderr = %q; want it to contain the usage text", got)
 	}
 }
 

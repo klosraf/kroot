@@ -50,7 +50,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   wraps invocation failures in the `ErrUsage` sentinel, `flag.ErrHelp` returns
   success, and `exitCodeFor` maps `nil` to `0`, `ErrUsage` to `2` and everything
   else to `1`. `TestExitCodesMatchTheDocumentedContract` pins all three, and
-  `TestRunHelpFlagIsNotAnError` fails against the previous `run`.
+  `TestRunHelpFlagIsNotAnError` fails against the previous `run`. Failure output
+  goes to the matching stream: requested help and the `version` line go to
+  stdout, while usage text from a failed invocation goes to stderr and a failed
+  invocation writes nothing to stdout (`TestUsageFailuresGoToStderr`). The new
+  `Streams` section of the same document records the contract.
 - `commitlint.config.mjs` accepted only a subset of the Conventional Commits
   types, so a valid `style(...)` commit passed the local `commit-msg` hook but
   would have been rejected by the CI `commits` job. The vocabulary now matches
