@@ -1,8 +1,9 @@
 # Automated dependency updates.
 #
 # Every ecosystem the repository depends on is watched weekly. Dependabot pull
-# requests are excluded from the commit-message gate in ci.yaml because the bot
-# generates sentence-case subjects that the Conventional Commits rule rejects.
+# requests are *not* exempt from the commit-message gate in ci.yaml: their
+# generated subjects were measured against commitlint and pass, so an exemption
+# would only have let a malformed bot commit through unchallenged.
 #
 # See docs/enterprise/security-policy.md (T5: dependency compromise).
 

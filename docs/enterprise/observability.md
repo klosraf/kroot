@@ -6,7 +6,10 @@
   library code; `main` configures the handler once, at startup.
 - Levels: `DEBUG` for local development, `INFO` as the production default, `WARN`
   for recoverable anomalies, `ERROR` for failures a human should look at.
-- Level is controlled by `KROOT_LOG_LEVEL` (`debug|info|warn|error`).
+- Level is controlled by `KROOT_LOG_LEVEL` (`debug|info|warn|error`). **Not
+  implemented yet:** no Go file in this repository reads any `KROOT_*` variable,
+  so the level is whatever `slog` defaults to. This is the contract the CLI has to
+  satisfy before an operator can rely on it.
 
 Required keys on every record where they apply:
 
