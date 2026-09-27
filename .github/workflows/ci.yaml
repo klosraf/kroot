@@ -90,7 +90,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends mandoc
-          mandoc -V
+          # `command -v` rather than `mandoc -V`: the version flag is not
+          # portable across mandoc builds — Ubuntu's 1.14.6 prints its usage and
+          # exits 5 for `-V`, which reads as a broken install. Presence is all
+          # that is being asserted, and the tests fail on their own if the tool is
+          # unusable.
+          command -v mandoc
 
       - name: Key build files are under version control
         run: |
