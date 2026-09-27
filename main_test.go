@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -961,6 +962,132 @@ func TestRealMainFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	}
 	if got := stdout.String(); got != "" {
 		t.Errorf("stdout = %q; want it empty: nothing ran", got)
+	}
+}
+
+// Both classes are asserted, not only the one that changed: a test that only
+// pins the usage path would still pass if a runtime failure were demoted to WARN
+// by the next person to touch the switch.
+func TestUsageErrorIsNotLoggedAsAProgramFailure(t *testing.T) {
+	keepDefaultLogger(t)
+
+	tests := []struct {
+		name string
+		// level is the KROOT_LOG_LEVEL the run starts from. It differs per case
+		// because the configuration failure below is only reachable with an
+		// invalid value, which would stop the usage-error case before it ran.
+		level     string
+		args      []string
+		wantLevel string
+		wantMsg   string
+		wantInErr string
+	}{
+		{
+			name:      "a caller's typo is a warning about their invocation",
+			args:      []string{"bogus"},
+			wantLevel: "WARN",
+			wantMsg:   "kroot: usage error",
+			wantInErr: `see "kroot help"`,
+		},
+		{
+			name:      "rejected configuration stays the program's failure",
+			level:     "verbose",
+			args:      []string{"version"},
+			wantLevel: "ERROR",
+			wantMsg:   "kroot failed",
+			wantInErr: "configuration rejected",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("KROOT_LOG_LEVEL", tc.level)
+
+			var stdout, stderr bytes.Buffer
+
+			realMain(context.Background(), tc.args, &stdout, &stderr)
+			got := stderr.String()
+
+			if !strings.Contains(got, tc.wantLevel) {
+				t.Errorf("stderr = %q; want level %s", got, tc.wantLevel)
+			}
+			if !strings.Contains(got, tc.wantMsg) {
+				t.Errorf("stderr = %q; want the message %q", got, tc.wantMsg)
+			}
+			// The recovery is the part written for a person, so it must survive
+			// in the record rather than being dropped by a reworded headline.
+			//
+			// stderr is not a terminal here, so the record is JSON and its quotes
+			// are escaped. The assertion is made against the decoded record
+			// rather than against the raw bytes, because asserting on escaped
+			// output would pin the encoder's escaping rather than the message.
+			var record map[string]any
+			if err := json.Unmarshal(stderr.Bytes(), &record); err != nil {
+				t.Fatalf("stderr is not a JSON record: %v\n%s", err, got)
+			}
+			if msg, _ := record["err"].(string); !strings.Contains(msg, tc.wantInErr) {
+				t.Errorf("record err = %q; want it to contain %q", msg, tc.wantInErr)
+			}
+		})
+	}
+}
+
+// TestWarnSilencesAUsageErrorButNotAProgramFailure is the reason the level was
+// worth deciding. With KROOT_LOG_LEVEL=warn a caller can raise the floor to hide
+// their own typos, and real failures still get through — a level that cannot
+// separate the two is a level that filters nothing.
+func TestWarnSilencesAUsageErrorButNotAProgramFailure(t *testing.T) {
+	keepDefaultLogger(t)
+
+	t.Setenv("KROOT_LOG_LEVEL", "error")
+	var stdout, stderr bytes.Buffer
+	realMain(context.Background(), []string{"bogus"}, &stdout, &stderr)
+	if got := stderr.String(); got != "" {
+		t.Errorf("stderr = %q; want a usage error silenced at KROOT_LOG_LEVEL=error", got)
+	}
+
+	t.Setenv("KROOT_LOG_LEVEL", "verbose")
+	stdout.Reset()
+	stderr.Reset()
+	realMain(context.Background(), []string{"version"}, &stdout, &stderr)
+	if got := stderr.String(); !strings.Contains(got, "configuration rejected") {
+		t.Errorf("stderr = %q; want a configuration rejection at ERROR even under a warn floor", got)
+	}
+}
+
+// TestDiagnosticSurvivesRedirection asserts the change did not cost a machine
+// consumer anything. api-compatibility.md fixes the record's keys, so a redirect
+// must still receive parseable JSON carrying the same keys and the whole message
+// — the level moved, the shape did not.
+func TestDiagnosticSurvivesRedirection(t *testing.T) {
+	t.Setenv("KROOT_LOG_LEVEL", "")
+	keepDefaultLogger(t)
+
+	var stdout, stderr bytes.Buffer
+
+	// stderr is a bytes.Buffer, which is not a character device, so this is the
+	// redirected path a script and a CI job actually get.
+	if got := realMain(context.Background(), []string{"bogus"}, &stdout, &stderr); got != exitUsage {
+		t.Fatalf("realMain(bogus) = %d; want %d", got, exitUsage)
+	}
+
+	var record map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &record); err != nil {
+		t.Fatalf("stderr is not JSON on a redirect: %v\n%s", err, stderr.String())
+	}
+	for _, key := range []string{"time", "level", "msg", "err"} {
+		if _, ok := record[key]; !ok {
+			t.Errorf("record %v is missing the key %q; the key set is the stable interface", record, key)
+		}
+	}
+	if got := record["level"]; got != "WARN" {
+		t.Errorf("record level = %v; want WARN", got)
+	}
+	if msg, _ := record["err"].(string); !strings.Contains(msg, `see "kroot help"`) {
+		t.Errorf("record err = %q; want the whole message, recovery included", msg)
+	}
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q; want it empty: a diagnostic never belongs on stdout", got)
 	}
 }
 
