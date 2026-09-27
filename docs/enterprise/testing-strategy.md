@@ -29,6 +29,13 @@ go test -race -cover ./...
 govulncheck ./...
 ```
 
+These four are platform-independent, and all four run on Linux for every pull
+request. The matrix also includes `macos-latest`, but only on a push to `main`:
+the project ships a desktop build and targets macOS for local use, so the platform
+is verified on the merge that produces a releasable `main`, not on every commit
+that precedes it. See
+[`docs/adr/0002-keep-macos-verification-off-pull-requests.md`](../adr/0002-keep-macos-verification-off-pull-requests.md).
+
 Integration tests run when the change touches the code they cover:
 
 ```sh

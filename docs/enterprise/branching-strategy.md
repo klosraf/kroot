@@ -45,13 +45,19 @@
 | Require pull request | yes |
 | Required approvals | 0 during the single-maintainer phase (see below) |
 | Dismiss stale approvals on push | yes |
-| Require status checks | `commit messages`, `lint`, `test (ubuntu-latest)`, `test (macos-latest)`, `vulnerabilities` |
+| Require status checks | `commit messages`, `lint`, `test (ubuntu-latest)`, `vulnerabilities` |
 | Require branches to be up to date | yes |
 | Include administrators | yes - administrators are not exempt from the checks |
 | Require conversation resolution | yes |
 | Require linear history | yes |
 | Allow force push | no |
 | Allow deletion | no |
+
+`test (macos-latest)` is deliberately **not** in that list. It runs only on a push
+to `main`, and a required status check that a pull request never reports leaves
+that pull request permanently blocked rather than failing it. The trade-off
+behind that decision, including the measured cost that forced it, is in
+[`docs/adr/0002-keep-macos-verification-off-pull-requests.md`](../adr/0002-keep-macos-verification-off-pull-requests.md).
 
 ### Required approvals during the single-maintainer phase
 

@@ -38,9 +38,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Linux runs on every event; macOS is added only on a push to `main`.
+      #
+      # macOS runners bill at a 10x rate multiplier, and this account exhausted
+      # its included Actions minutes (~12,400 billable-equivalent minutes per
+      # month against a 3,000 per month allowance), at which point GitHub stopped
+      # starting any job in this repository:
+      #   "The job was not started because recent account payments have failed or
+      #    your spending limit needs to be increased."
+      # Verifying macOS on every push to every pull request was the largest single
+      # cost driver for the least benefit: the platform is still verified, because
+      # merging is a push, but it is verified once per merge instead of once per
+      # commit. See docs/adr/0002-keep-macos-verification-off-pull-requests.md.
+      #
+      # The job name stays `test (ubuntu-latest)` on pull requests, so removing
+      # `test (macos-latest)` from the required status checks is the only settings
+      # change needed. A required check that a pull request never reports blocks
+      # that pull request forever; the `commits` job below documents the same trap.
       matrix:
-        # macOS is included because the project targets it for local use.
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'push' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
     steps:
       - uses: actions/checkout@v7
 
