@@ -42,12 +42,33 @@
 
 | Setting | Value |
 |---|---|
-| Require pull request | yes, at least 1 approval |
+| Require pull request | yes |
+| Required approvals | 0 during the single-maintainer phase (see below) |
 | Dismiss stale approvals on push | yes |
-| Require status checks | `ci` workflow (all jobs) |
+| Require status checks | `commit messages`, `lint`, `test (ubuntu-latest)`, `test (macos-latest)`, `vulnerabilities` |
+| Require branches to be up to date | yes |
+| Include administrators | yes - administrators are not exempt from the checks |
+| Require conversation resolution | yes |
 | Require linear history | yes |
 | Allow force push | no |
 | Allow deletion | no |
+
+### Required approvals during the single-maintainer phase
+
+Requiring an approval that the only maintainer cannot give to themselves makes
+the rule decorative: it would have to be bypassed on every change, and a control
+that is routinely bypassed is worse than no control, because it normalises the
+override.
+
+The required approval count is therefore **0** until a second maintainer exists.
+Pull requests, every status check, linear history and the force-push ban remain
+mandatory, and administrators are **not** exempt from any of them.
+
+When a second maintainer joins:
+
+1. set `required_approving_review_count` to `1`;
+2. enable `require_code_owner_reviews`;
+3. keep `enforce_admins` enabled.
 
 ## Hotfixes
 
