@@ -368,20 +368,24 @@ measures.
 - **Small enough to diff.** A surface too large to review is a surface nobody
   reviews.
 
-**The record (CLI-09).** Machine class: Intel Xeon W-3223 @ 3.50 GHz, macOS 26.7.
+**The record (CLI-09).** Measured 2026-09-27 on an Intel Xeon W-3223 @ 3.50 GHz,
+macOS 26.7.
 
 | Measurement | Value | Budget |
 |---|---|---|
-| `BenchmarkRunVersion` (in-process: flags, config, dispatch, write) | **1457–1463 ns/op**, 2194 B/op, 28 allocs/op over three runs | **≤ 10 µs/op** and ≤ 8 KiB/op |
+| `BenchmarkRunVersion` (in-process: flags, config, dispatch, write) | **1524–1559 ns/op**, 2450 B/op, 28 allocs/op | **≤ 10 µs/op** and ≤ 8 KiB/op |
 | Process-level `kroot version`, fork/exec included | **≈ 14.3 ms** per invocation (50 runs, wall clock) | reference figure, not CI-enforced |
 
-The in-process budget has roughly seven times the measured headroom on purpose: it
-exists to catch a *category* of regression — an accidental file read, a reflection
-call, an allocation storm at startup — not to police microseconds, which would
-produce a flaky gate and a number nobody trusts. The process-level figure is
-recorded but not gated, because `make bench` runs Go benchmarks and a spawn harness
-would be a different, noisier tool; it is the honest answer to "what does a script
-pay", and it is dominated by the operating system rather than by this code.
+The budget is the durable half; the measured value is a reading, and it moves with
+the machine and the load — which is why it is recorded with the machine it came
+from instead of being written as if it were a constant. The in-process budget
+leaves roughly six times the measured headroom on purpose: it exists to catch a
+*category* of regression — an accidental file read, a reflection call, an
+allocation storm at startup — not to police microseconds, which would produce a
+flaky gate and a number nobody trusts. The process-level figure is recorded but
+not gated, because `make bench` runs Go benchmarks and a spawn harness would be a
+different, noisier tool; it is the honest answer to "what does a script pay", and
+it is dominated by the operating system rather than by this code.
 
 
 ### 4.9 Compatibility
@@ -437,7 +441,7 @@ are demonstrated with an artefact. Each is marked by the state in which §3 left
 | CLI-04 — the manual documents the environment | The program page carries an `ENVIRONMENT` section naming each variable, its accepted values in the parser's order and its default — from the parser's own slice; command pages carry none; a page with nothing to say omits the heading; `mandoc -T lint` accepts it; source stays within 80 columns | `TestProgramPageDocumentsTheEnvironment`, `TestEnvironmentDefinitionOmitsClausesItHasNothingToSay`, `TestEnvironmentSectionIsUnderstoodByARealRoffFormatter`, `TestManualOmitsSectionsItHasNothingFor` |
 | CLI-05 — the first screen works | A real description instead of a placeholder; every actionable block copy-pasteable, with `$` reserved for transcripts of output; the zsh recipe creates a directory the caller owns and puts it on `fpath` **before** `compinit` | The transcript in §8 |
 | CLI-06 — command answers `-h` and `--help` | Routed through `runHelp`; prints command usage and exits `0`; `-h` remains global on program level; extra operands ignored if help is first operand, but data if after operand | `TestRun` (7 dedicated subtests), ADR-0004 |
-| CLI-09 — performance budget measured and stated | `BenchmarkRunVersion` pins startup/dispatch in-process (≤ 10 µs budget; measures ~1.46 µs, 2.2 KB, 28 allocs); process-level wall-clock documented (~14.3 ms) | `BenchmarkRunVersion` in `main_test.go`, §4.8 |
+| CLI-09 — performance budget measured and stated | `BenchmarkRunVersion` pins startup/dispatch in-process (≤ 10 µs budget; measures ~1.55 µs, 2.4 KB, 28 allocs); process-level wall-clock documented (~14.3 ms) | `BenchmarkRunVersion` in `main_test.go`, §4.8 |
 | CLI-10 — escape sequences & width enforced | Automated tests sweep every surface (13 targets): zero ANSI escape bytes (`0x1b`); human-facing prose (help, man roff) strictly ≤ 80 chars per line | `TestNoSurfaceEmitsAnEscapeSequence`, `TestHumanFacingSurfacesStayWithinTheDesignWidth` |
 | CLI-07 — completion offers what each position accepts | `kroot <TAB>` offers commands; `completion <TAB>` the shells; `help`/`man` `<TAB>` the command names; a command with no operand and every later position offer nothing. The vocabulary is declared on the command, so a shell added to `Shells` reaches all three scripts | `TestGeneratedBashScriptActuallyCompletes`, `TestZshInstalledCompletionWorksViaCompinit`, `TestFishScriptCarriesTheOperandVocabulary`, `TestAnAddedShellReachesEveryScriptWithoutTouchingATemplate`, `TestNewRejectsContradictoryOperands` |
 | CLI-08 — the shells agree on a declined position | bash is registered without `-o default`, fish keeps `-f`, zsh returns no match, so no shell offers a path after a rejected word — kroot has no file operand to accept one. The reasoning travels in the generated script and `README.md` | `TestNoShellFallsBackToFilenamesAfterADeclinedPosition` |
@@ -724,6 +728,7 @@ a failure, and a test compares the name in `shelltools_test.go` with the one in
 | New output text | The width and escape-byte guards (CLI-10), so a surface cannot grow past its budget unnoticed |
 | A frontend component | Vitest for logic and hooks, axe in CI, one end-to-end journey, a manual keyboard pass |
 | Documentation only | The link check, a transcript if it contains instructions, and a `CHANGELOG.md` entry when the wording is user-visible |
+| A figure quoted in this document | Re-measured in the same change. A number written once and never revisited is a claim nobody can check — and coverage, benchmark and transcript figures all drift the moment the code they describe moves |
 | Adversarial input (playbook §19, CLI subset) | Empty, oversized, duplicated, invalid, Unicode and hostile input on every accepted position; the registry already sorts and bounds names, and the roff and shell writers escape what free text can carry |
 | Lifecycle and distribution | A clean install of a generated artefact, and an upgrade that leaves it stale: the completion scripts' documented install is exactly the case CLI-01 covers |
 | Interface | Long text held to 80 columns, zero escape bytes, and a reader that is neither a terminal nor a person — a pipe, a file, a screen reader |
@@ -827,7 +832,7 @@ A reviewer answers in order. A "no" is a request for a change, not a preference.
 | Formatting | `make fmt-check` | clean, no diff |
 | Static analysis | `go vet ./...` | clean |
 | Lint | `bin/golangci-lint run` | **0 issues** |
-| Tests + race + coverage | `go test -race -covermode=atomic ./...` | **ok** — 95.8% of statements in `github.com/klosraf/kroot`, 98.4% in `.../internal/cli` |
+| Tests + race + coverage | `go test -race -covermode=atomic ./...` | **ok** — 97.6% of statements in `github.com/klosraf/kroot`, 98.6% in `.../internal/cli`, the latter up from the 98.4% this pass started at |
 | Vulnerability scan | `bin/govulncheck ./...` | No vulnerabilities found |
 | Build | `make build` | ok |
 | **The whole definition of done** | **`make ci`** | **exit 0** |
