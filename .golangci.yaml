@@ -1,0 +1,72 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # The default set ("standard") already enables errcheck, govet, ineffassign,
+  # staticcheck and unused. Everything listed here is additive.
+  enable:
+    - asasalint
+    - bidichk
+    - bodyclose
+    - containedctx
+    - copyloopvar
+    - depguard
+    - errorlint
+    - gocheckcompilerdirectives
+    - gocritic
+    - gosec
+    - intrange
+    - makezero
+    - misspell
+    - nilerr
+    - nolintlint
+    - nosprintfhostport
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - usetesting
+    - wastedassign
+    - whitespace
+  settings:
+    depguard:
+      rules:
+        # Test helpers must never leak into production binaries.
+        test-helpers-are-test-only:
+          files:
+            - $all
+            - "!$test"
+          deny:
+            - pkg: github.com/kroot/kroot/internal/testutil
+              desc: test helpers may only be imported from _test.go files
+    govet:
+      disable:
+        # Struct field alignment is a micro-optimisation, not a correctness
+        # concern, and it fights readability.
+        - fieldalignment
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: indent-error-flow
+        - name: errorf
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+
+severity:
+  default: error
+  rules:
+    - linters:
+        - gofmt
+        - goimports
+      severity: info

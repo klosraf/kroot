@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/kroot/kroot/blob/main/SECURITY.md
+    about: Do not open a public issue for a suspected vulnerability. Report it privately.
+  - name: Question or discussion
+    url: https://github.com/kroot/kroot/discussions
+    about: Ask a question or discuss an idea before opening an issue.
+  - name: Contributing guide
+    url: https://github.com/kroot/kroot/blob/main/CONTRIBUTING.md
+    about: How to propose, review and land a change.

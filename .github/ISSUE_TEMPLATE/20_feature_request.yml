@@ -1,0 +1,63 @@
+name: Feature request
+description: Propose a new capability or a behaviour change.
+title: "feat(scope): "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Per [CONTRIBUTING.md](https://github.com/kroot/kroot/blob/main/CONTRIBUTING.md),
+        non-trivial changes are discussed in an issue before any code is written.
+        Describe the **problem**, not just the solution you have in mind.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that you cannot do today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to see. Include interface sketches if useful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, and why you rejected them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: How would this be tested?
+      description: The behaviour to assert, and at which level (unit / integration / E2E).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Is this a breaking change?
+      description: See docs/enterprise/versioning-policy.md.
+      options:
+        - "No — additive only"
+        - "Yes — changes existing behaviour or interface"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Prior art, links, draft documentation.
+    validations:
+      required: false

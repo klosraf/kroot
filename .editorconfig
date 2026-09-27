@@ -1,0 +1,36 @@
+# https://editorconfig.org
+# Keeps every editor consistent so diffs stay minimal and reviewable.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# gofmt mandates hard tabs for indentation.
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Makefile recipes require a leading tab.
+[Makefile]
+indent_style = tab
+
+# Two trailing spaces are a hard line break in Markdown.
+[*.{md,mdx}]
+trim_trailing_whitespace = false
+
+[*.{yaml,yml}]
+indent_size = 2
+
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.{go,rs,c,h}]
+indent_size = 4
+
+[*.sh]
+indent_size = 2

@@ -1,0 +1,32 @@
+# Binaries and build output
+/bin/
+/kroot
+/dist/
+/build/
+*.exe
+*.test
+*.out
+
+# Local scratch: tool install logs and temporary files
+/.tmp/
+
+# Node tooling (repository-level and, later, the web/ workspace)
+node_modules/
+
+# Environment and secrets (never commit)
+.env
+.env.*
+!.env.example
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+

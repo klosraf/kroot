@@ -1,0 +1,19 @@
+{
+  "name": "kroot-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repository-level JavaScript tooling for kroot. Not a published package.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "commits:check": "commitlint --from HEAD~1 --to HEAD --verbose",
+    "commits:range": "commitlint --from \"${FROM:-HEAD~1}\" --to \"${TO:-HEAD}\" --verbose"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0"
+  }
+}
