@@ -68,6 +68,32 @@ type Command struct {
 	Long string
 	// Run is the behaviour. It must not be nil.
 	Run RunFunc
+	// Operands declares what the command accepts in its first operand position,
+	// so a shell can offer it there instead of declining. It is completion data,
+	// not validation: dispatch never reads it, so it must describe the
+	// invocation Usage already shows rather than enforce it. The zero value
+	// means the command takes no operand, and the generators decline.
+	Operands Operands
+}
+
+// Operands is what a command accepts in its first operand position, for shell
+// completion only.
+//
+// Exactly one source per position: either Values, a closed vocabulary such as the
+// supported shells, or CommandNames, the registry's own names — which is what
+// `help` and `man` take. Declaring both is a programmer error the registry
+// rejects; declaring neither is a command that takes nothing.
+//
+// The first operand is the only one modelled, because it is the only one any
+// current command accepts. A command that grows a second operand declares its
+// first here and its second in the same way, rather than the generators guessing
+// positions they do not know.
+type Operands struct {
+	// Values is a closed vocabulary this position accepts, e.g. Shells.
+	Values []string
+
+	// CommandNames asks for the registry's command names instead of Values.
+	CommandNames bool
 }
 
 // Registry is a validated set of commands. Registration order is irrelevant:
@@ -93,6 +119,11 @@ func New(commands ...Command) (*Registry, error) {
 			return nil, fmt.Errorf("command %q has no summary: the command list and completion both need one", c.Name)
 		case c.Run == nil:
 			return nil, fmt.Errorf("command %q has no Run function", c.Name)
+		case c.Operands.CommandNames && len(c.Operands.Values) > 0:
+			// Caught here rather than in a generator: by the time a shell script
+			// exists the contradiction is already baked into a file someone
+			// installed, and a shell is a poor place to report a programmer error.
+			return nil, fmt.Errorf("command %q declares both an operand vocabulary and the command names: the position accepts one or the other", c.Name)
 		}
 		if _, exists := r.byName[c.Name]; exists {
 			return nil, fmt.Errorf("command %q is registered twice", c.Name)

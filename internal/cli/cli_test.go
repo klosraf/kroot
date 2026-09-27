@@ -188,6 +188,28 @@ func TestSuggestionsRespectTheCap(t *testing.T) {
 	}
 }
 
+// TestNewRejectsContradictoryOperands covers the one operand declaration a registry
+// cannot make sense of: a first position that accepts a closed vocabulary *and* the
+// command names. It is a programmer error, and New is the only place early enough to
+// say so — by the time a shell script exists, the contradiction is baked into a file
+// someone installed, and a shell is a poor place to report it.
+func TestNewRejectsContradictoryOperands(t *testing.T) {
+	_, err := New(
+		Command{
+			Name:     "confused",
+			Summary:  "s",
+			Operands: Operands{Values: []string{"a"}, CommandNames: true},
+			Run:      noop(),
+		},
+	)
+	if err == nil {
+		t.Fatal("New() with both an operand vocabulary and the command names = nil; want a rejection")
+	}
+	if want := "one or the other"; !strings.Contains(err.Error(), want) {
+		t.Errorf("New() error = %v; want it to contain %q", err, want)
+	}
+}
+
 // TestErrorKeepsTheChainAndAddsTheGuess pins the diagnostic contract: the
 // message stays matchable with errors.Is on both sentinels, and the suggestion
 // is appended rather than replacing the facts.

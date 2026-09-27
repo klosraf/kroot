@@ -9,6 +9,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **The zsh completion script did not exist where the product documents installing
+  it.** The generated file carried no `#compdef` line, so `compinit` never associated
+  it with the binary: installed as `_kroot` on `fpath` — exactly as the script's own
+  header instructs — nothing was registered and TAB produced no candidates at all.
+  The registration code at the end of the file was unreachable, because it only ran
+  if something executed the file, which the documented install path never does. Two
+  changes close it. The script now opens with `#compdef <binary>` and ends with a
+  dispatch keyed on `funcstack`: an autoloaded file *is* the body of the function
+  `compinit` calls, so it completes there, while a sourced file is not, so it
+  registers there. The menu is also offered only in the first operand position,
+  where a subcommand is valid — which is what bash already did, so one product no
+  longer behaves differently per shell and the README's promise holds. The test that
+  proves it installs the generated file on a temporary `fpath` and reads it back
+  through a real `compinit`; every earlier test *sourced* the script instead, which
+  is exactly why none of them could see this.
+- **`kroot version foo` printed the version and exited `0`.** `help` and `man` had
+  already been rejecting a surplus operand, and `api-compatibility.md` states that
+  undefined input "will not be silently accepted" — `version` was simply the command
+  nobody covered, so a caller who typed a third word was told it worked. It now
+  exits `2` with nothing on stdout and a diagnostic naming `kroot help version`, so
+  the answer to "then what does it accept?" is one invocation away.
+- **The README's first screen neither described the product nor could be followed as
+  written.** It opened with an unfinished placeholder comment; the zsh recipe wrote
+  into `${fpath[1]}`, which is frequently not writable by the caller and said nothing
+  about the file name being load-bearing, so the install failed or silently produced
+  a dead completion; and the actionable examples carried a `$` prompt prefix, which
+  breaks pasting them into a shell. The description now states what the product is,
+  every actionable block is copy-pasteable with `$` reserved for transcripts of
+  output, and the zsh recipe creates a directory the caller owns, writes `_kroot`, and
+  puts that directory on `fpath` **before** `compinit` runs.
 - The validation of kroot's own generated output did not run in CI.
   `internal/cli` proves the completion scripts and manual pages by handing them to
   the tools that will consume them — `bash -n`, `zsh -n`, and `mandoc -T lint`
@@ -46,6 +76,70 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   including the behaviours a supervisor can actually depend on: an unrecognised
   `KROOT_LOG_LEVEL` is rejected rather than coerced, and the exit code
   distinguishes a usage error from a runtime failure.
+
+### Added
+
+- **Completion now offers what each position actually accepts.** The scripts
+  completed command names and nothing else, so `kroot completion <TAB>` offered
+  commands rather than shells, and `kroot help <TAB>` and `kroot man <TAB>` — where
+  a command name *is* the valid answer — offered nothing at all. Every command now
+  declares its first operand, and the three generators offer that vocabulary in the
+  position it belongs to: shells after `completion`, command names after `help` and
+  `man`, and nothing after a command that takes no operand or past the first operand.
+  The declaration lives on the command rather than inside a template, so a fourth
+  shell added to `Shells` reaches help, the manual and all three scripts from one
+  place and a test fails the moment a template starts carrying its own copy of the
+  list. Two details the shells forced: the zsh case assigns its array rather than
+  listing words, because a bare word in a `case` branch is a command to zsh and
+  fails with "command not found"; and the fish condition counts the tokens before
+  the cursor, because `__fish_seen_subcommand_from` stays true at every later
+  position and the vocabulary would otherwise keep being offered after the operand
+  that already accepted one. Proved by driving a real bash and a real zsh through
+  the documented install path; fish is not installed where this suite runs, so its
+  condition is asserted structurally.
+- **`kroot <command> -h` and `--help` print that command's own help.** Three
+  spellings already meant "tell me about this command" and disagreed: `kroot help
+  version` gave the command's help, `kroot version -h` gave the *program's* help
+  because the global flag set owns `-h`, and `kroot version --help` printed the
+  version until the surplus-operand fix turned it into an error. The alias now
+  routes through the help command rather than a second renderer, so `kroot version
+  --help` and `kroot help version` print the same bytes, tolerate a failed write the
+  same way and exit alike. Only the first operand counts — `kroot version extra
+  --help` stays a usage error, because after the first operand `-h` is data — and
+  the program's own `-h` still comes from `flag.ErrHelp`, unchanged. Recorded as
+  ADR-0004 rather than inherited from a flag package's default, since `api-compatibility.md`
+  makes flags documented in the manual a stable surface from `v1.0.0`.
+- **The generated manual documents the environment.** `kroot man` now carries an
+  `ENVIRONMENT` section naming each `KROOT_*` variable, the values it accepts in the
+  parser's order, and its default — with the vocabulary passed in from the very slice
+  `parseLogLevel` validates against, so the page cannot advertise a level the binary
+  rejects, and adding a level changes the page without touching the generator. The
+  section belongs to the program page alone: a variable is read by the program, not
+  by one command, and repeating it under every command is how a manual starts
+  disagreeing with itself, so a command page carries none. A page with nothing to say
+  omits the heading rather than printing an empty one, and the definition is asserted
+  through `mandoc -T lint` and its parse tree, because it carries a quoted default —
+  punctuation a `.TP` body rarely sees.
+
+### Changed
+
+- **The three shells no longer disagree about a declined position.** bash was
+  registered with `-o default`, so a position the script declined fell back to
+  filename completion, while fish (`-f`) and zsh (no match) offered nothing. Nobody
+  who installed one shell could observe the difference, and nobody who installed
+  two could remember which was which. kroot takes no file operand anywhere, so a
+  path offered after a rejected word is a suggestion the binary cannot accept; all
+  three now decline, bash without `-o default`. The reasoning is in the generated
+  script's own comment and in `README.md`, and a test holds the registration lines
+  of all three shells to it.
+- **A command name that resembles nothing now names where the list is.**
+  `kroot kubernetes` answered with the facts and no next step, while `kroot versioo`
+  was already answered with the command it meant. The suggestion *is* the recovery, so
+  it suppresses the pointer: a name with no near miss now ends with
+  `see "kroot help" for the command list`, and the near-miss message is unchanged. The
+  error chain still wraps both sentinels, so `errors.Is` callers are unaffected, and
+  the manual's own rejection routes through the same code, so `kroot man <typo>` is
+  answered exactly as `kroot <typo>` is.
 
 ## [v0.1.0] - 2026-09-27
 

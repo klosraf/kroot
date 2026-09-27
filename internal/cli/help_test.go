@@ -133,6 +133,35 @@ func TestCommandHelpPrefersLongAndFallsBack(t *testing.T) {
 	}
 }
 
+// TestUnknownCommandNamesTheCommandListWhenNothingIsClose covers the one
+// rejection a caller cannot act on by themselves. A near miss is answered with
+// the command it meant, which is a recovery in itself; a name that resembles
+// nothing would otherwise leave the caller holding a rejection with no next step
+// at all, so the command list is named instead. The suggestion suppresses the
+// pointer on purpose — two hints in one line bury the one that matters.
+func TestUnknownCommandNamesTheCommandListWhenNothingIsClose(t *testing.T) {
+	program := testProgram(t, nil)
+
+	near := program.UnknownCommand("versioo")
+	if !errors.Is(near, ErrUnknownCommand) {
+		t.Errorf("UnknownCommand(versioo) = %v; want it to wrap ErrUnknownCommand", near)
+	}
+	if want := `did you mean "version"?`; !strings.Contains(near.Error(), want) {
+		t.Errorf("UnknownCommand(versioo) = %q; want it to contain %q", near, want)
+	}
+	if strings.Contains(near.Error(), "command list") {
+		t.Errorf("UnknownCommand(versioo) = %q; want no pointer to the command list when the nearest command is already named", near)
+	}
+
+	far := program.UnknownCommand("kubernetes")
+	if !errors.Is(far, ErrUsage) {
+		t.Errorf("UnknownCommand(kubernetes) = %v; want it to wrap ErrUsage", far)
+	}
+	if want := `"kroot help"`; !strings.Contains(far.Error(), want) {
+		t.Errorf("UnknownCommand(kubernetes) = %q; want it to contain %q so the caller has a next step", far, want)
+	}
+}
+
 // TestRenderingReportsWriteFailures proves help does not claim success when the
 // destination refused the text; the caller decides what a broken pipe means.
 func TestRenderingReportsWriteFailures(t *testing.T) {
