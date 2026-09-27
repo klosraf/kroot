@@ -17,7 +17,7 @@ decisions, and policies for branching, versioning, releasing, security and
 observability. Diverging from that model without a reason would produce two
 repositories with two different definitions of "done".
 
-The initial module (`github.com/kroot/kroot`, Go 1.23.12) compiles and passes its
+The initial module (`github.com/klosraf/kroot`, Go 1.23.12) compiles and passes its
 tests, but has no governance, no CI and no declared standards.
 
 ## Decision
@@ -71,5 +71,12 @@ tests, but has no governance, no CI and no declared standards.
 - `v0.x` releases may change the public surface in a MINOR release; the
   compatibility guarantees in `docs/enterprise/api-compatibility.md` take effect
   at `v1.0.0`.
-- `SECURITY.md` currently names `security@kroot.dev` as the reporting address, to
-  be confirmed before the first release.
+- The module path is `github.com/klosraf/kroot`, matching the GitHub account that
+  owns the repository. Renaming it later requires updating `go.mod` and every
+  internal import, so it was settled before domain code existed.
+- Vulnerability reports arrive through GitHub private vulnerability reporting,
+  with the maintainer email as a fallback. A project mailbox and domain can
+  replace the fallback once one is established.
+- The licence is MIT, consistent with the sibling `kodev` project. Changing it
+  later is a single-file change, but relicensing after third-party contributions
+  requires contributor agreement, so it was decided now.

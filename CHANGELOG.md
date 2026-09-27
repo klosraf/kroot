@@ -9,7 +9,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Initial module `github.com/kroot/kroot` (Go 1.23.12).
+- Initial module `github.com/klosraf/kroot` (Go 1.23.12).
 - CLI entry point with `help` and `version` commands, plus `--version`.
 - Build metadata (`version`, `commit`, `buildTime`) injected at link time and
   reported by `kroot version`.
@@ -27,6 +27,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Dev tooling pinned per repository — `golangci-lint` v2.14.0 and `govulncheck`
   v1.8.0 installed into `./bin` by `make tools` — so local and CI runs cannot
   drift apart.
+- Repository hygiene: `LICENSE` (MIT), `.gitattributes` for line-ending
+  normalisation, `.github/CODEOWNERS`, and `.github/dependabot.yml` for weekly
+  dependency updates across Go modules, npm tooling and GitHub Actions.
+
+### Changed
+
+- Module path corrected from `github.com/kroot/kroot` to
+  `github.com/klosraf/kroot`, matching the GitHub account that owns the
+  repository.
 
 ### Fixed
 
@@ -37,6 +46,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The commitlint `subject-case` rule rejected legitimate mid-subject acronyms
   such as `CLI`, `HTTP` and `API`, contradicting the naming rules in
   `docs/enterprise/coding-standards.md`.
+- The `commits` CI job no longer runs for Dependabot and Renovate pull requests,
+  whose generated sentence-case subjects would fail the `subject-case` rule by
+  construction.
 
 ### Notes
 
@@ -45,7 +57,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - No public API, CLI flag or environment variable is guaranteed stable before
   the first `v0.1.0` tag. The compatibility guarantees documented in
   `docs/enterprise/api-compatibility.md` take effect at `v1.0.0`.
-- `SECURITY.md` names `security@kroot.dev` as the reporting address; confirm it
-  before the first public release.
-- No `LICENSE` file yet — choose one before publishing.
+- Vulnerability reports are handled through GitHub private vulnerability
+  reporting, with the maintainer's email as a fallback. A project mailbox and
+  domain can replace the fallback once one exists.
+
 

@@ -2,11 +2,16 @@
 
 > **Do not open a public issue for a suspected vulnerability.**
 
-Report it by email to **`security@kroot.dev`**, and give the maintainers time to
-investigate and ship a fix before any public disclosure.
+Report it through **GitHub private vulnerability reporting**: open the
+repository's **Security** tab and choose **Report a vulnerability**. The report
+stays private to the maintainers until a fix ships.
 
-> **TODO (before first release):** confirm the security contact address and
-> mailbox routing, then delete this note.
+If you cannot use GitHub, email **`sr.klosraf@gmail.com`** with a subject
+starting with `[kroot-security]`. Include the same information listed below.
+
+<!-- TODO (before the first public release): if a project mailbox and domain are
+     established, add them here as the preferred channel and keep the GitHub
+     advisory flow as the fallback. Delete this note once decided. -->
 
 ## Reporting a vulnerability
 
