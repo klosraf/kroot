@@ -63,15 +63,12 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
-      - name: Formatting
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::unformatted files (run 'make fmt'):"
-            echo "$unformatted"
-            exit 1
-          fi
-
+      # Formatting is deliberately not checked here. The `lint` job runs
+      # golangci-lint, whose configured formatters are gofmt, gofumpt and
+      # goimports (.golangci.yaml) — the set docs/enterprise/coding-standards.md
+      # documents. A `gofmt -l .` step used to sit here as well, and because plain
+      # gofmt accepts files that gofumpt rejects, the two "formatting" gates
+      # disagreed about what formatted means. One tool defines it now.
       - name: Vet
         run: go vet ./...
 

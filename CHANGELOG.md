@@ -61,6 +61,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `Makefile` and the CI workflow so an incompatible dependency fails loudly
   instead of quietly changing the compiler. The bump to `actions/setup-go@v7`,
   whose v6.0.0 release sets `GOTOOLCHAIN=local`, is what surfaced the drift.
+- `make fmt` and `make fmt-check` did not enforce the format gate that
+  `docs/enterprise/coding-standards.md` documents. Both called plain `gofmt`,
+  while the enforced gate is golangci-lint's formatter set — gofmt, gofumpt and
+  goimports. Measured on a function whose body opens with a blank line:
+  `gofmt -l .` reports nothing, while `golangci-lint run` rejects the file with
+  `File is not properly formatted (gofumpt)` and `unnecessary leading newline
+  (whitespace)`. A developer following the documented fix — run `make fmt` —
+  could therefore still fail the lint gate, and the `test` job's own `gofmt` step
+  contradicted the `lint` job about what "formatted" means. `make fmt` and
+  `make fmt-check` now run `golangci-lint fmt` and `golangci-lint fmt --diff`, and
+  the duplicate `gofmt` step is gone so one tool defines it.
 - The `Makefile` was never under version control. A `Makefile` rule in a
   developer's global ignore file (`core.excludesFile`, the qmake/Qt rule) matched
   it, so `git add .` skipped it silently and no commit ever contained it. A fresh
