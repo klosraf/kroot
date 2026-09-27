@@ -19,6 +19,11 @@ user-visible.
 git log --oneline "$(git describe --tags --abbrev=0)"..HEAD
 ```
 
+> This command does not run today: `git describe` cannot reach the `v0.1.0` tag
+> from any branch. See *The `v0.1.0` tag does not describe this history* below for
+> the command to use instead, and for why the tag is not simply moved onto the
+> commit that actually reached `main`.
+
 ## Release checklist
 
 1. **Scope** — confirm the release contains only reviewed, merged, green commits.
@@ -41,11 +46,46 @@ git log --oneline "$(git describe --tags --abbrev=0)"..HEAD
 10. **Merge back** — the release branch merges into `main`; bump the development
     version if the project tracks one.
 
-Steps 6–8 are **not automated yet**: this repository has no release workflow and
-has never cut a tag, so signing the tag, building the artifacts and publishing the
-GitHub Release are manual. Until that is automated (a change that needs its own
-ADR), this section is a checklist rather than a description of tooling. Every
-other step is a human responsibility, recorded in the release PR description.
+Steps 6–8 are **not automated yet**: this repository has no release workflow, so
+signing the tag, building the artifacts and publishing the GitHub Release are
+manual. Until that is automated (a change that needs its own ADR), this section is
+a checklist rather than a description of tooling. Every other step is a human
+responsibility, recorded in the release PR description.
+
+That was written when no release had been cut. `v0.1.0` has since been tagged,
+built and published as a GitHub Release, by hand, following this list — so the
+absence of automation is established by a release that shipped without it.
+
+## The `v0.1.0` tag does not describe this history
+
+`v0.1.0` points at `044d233` (*chore(release): prepare v0.1.0*), a commit that is
+**not an ancestor of any branch**. The same work reached `main` as `285971c`
+(*chore(release): prepare v0.1.0 (#21)*), the squash-merge of the release pull
+request, and the tag was not moved onto it.
+
+Three things follow, and all three are still true until the next release:
+
+- `git describe --tags` fails on every branch with *"No tags can describe …"*, so
+  the documented step 1 below cannot be run as written.
+- The `VERSION` the `Makefile` injects falls back to the abbreviated commit — a
+  build is labelled `b1332f0-dirty` rather than a version — so `kroot version`
+  reports a commit hash as if it were a release.
+- A release cut from this history would be the first whose `git describe` output
+  is meaningful, because the new tag *would* be reachable.
+
+**The tag is published, and it stays.** The rollback rules below forbid deleting
+or moving a published tag, and rewriting it to repair tooling would turn a
+bookkeeping mistake into a history rewrite for anyone who fetched it. The repair
+is forward: the next release cuts a correct tag on a release-branch head, which
+gives `git describe` a reachable anchor, and the step below is amended to say so
+while the gap is open.
+
+**Until then, use this instead of the command in step 1**, which needs no tag:
+
+```sh
+git log --oneline "$(git merge-base HEAD main)"..HEAD   # commits on this branch
+git log --oneline -1 main                             # what is merged
+```
 
 ## Artifacts
 
