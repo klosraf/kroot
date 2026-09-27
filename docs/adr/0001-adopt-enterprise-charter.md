@@ -77,6 +77,15 @@ tests, but has no governance, no CI and no declared standards.
 - Vulnerability reports arrive through GitHub private vulnerability reporting,
   with the maintainer email as a fallback. A project mailbox and domain can
   replace the fallback once one is established.
+- **Correction (2026-09-27), appended rather than edited in — this ADR is
+  append-only per `AGENTS.md` §9.** The note above describes a channel that does
+  not exist: GitHub does not provide private vulnerability reporting for a
+  private repository without GitHub Advanced Security (the API returns 404), so a
+  reporter following it would look for a button that is not there. The channel is
+  the maintainer's email, as `SECURITY.md` documents, and email is the *primary*
+  channel rather than a fallback. The original note stays exactly as written,
+  because the record of a decision that turned out wrong is itself part of the
+  record.
 - The licence is MIT, consistent with the sibling `kodev` project. Changing it
   later is a single-file change, but relicensing after third-party contributions
   requires contributor agreement, so it was decided now.
