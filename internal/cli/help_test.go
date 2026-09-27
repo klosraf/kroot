@@ -2,7 +2,7 @@ package cli
 
 import (
 	"errors"
-	"io"
+	"flag"
 	"strings"
 	"testing"
 )
@@ -13,9 +13,9 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
-// testProgram builds a program whose flags block is the given text, so help
-// rendering can be asserted without the flag package.
-func testProgram(t *testing.T, flags FlagsWriter) *Program {
+// testProgram builds a program with the given global flags, so help rendering
+// can be asserted against a real flag set rather than a stand-in for one.
+func testProgram(t *testing.T, flags *flag.FlagSet) *Program {
 	t.Helper()
 
 	registry, err := New(
@@ -31,7 +31,7 @@ func testProgram(t *testing.T, flags FlagsWriter) *Program {
 		Summary:   "application skeleton",
 		UsageLine: "kroot [flags] <command>",
 		Commands:  registry,
-		Flags:     flags,
+		FlagSet:   flags,
 	}
 }
 
@@ -69,12 +69,10 @@ func TestGeneralHelpListsCommandsSortedAndAligned(t *testing.T) {
 func TestGeneralHelpRendersTheFlagsSection(t *testing.T) {
 	var out strings.Builder
 
-	flags := func(w io.Writer) error {
-		_, err := io.WriteString(w, "  -version\n    \tprint the version and exit\n")
-		return err
-	}
+	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
+	fs.Bool("version", false, "print the version and exit")
 
-	if err := testProgram(t, flags).GeneralHelp(&out); err != nil {
+	if err := testProgram(t, fs).GeneralHelp(&out); err != nil {
 		t.Fatalf("GeneralHelp() error = %v; want nil", err)
 	}
 
@@ -138,10 +136,10 @@ func TestCommandHelpPrefersLongAndFallsBack(t *testing.T) {
 // TestRenderingReportsWriteFailures proves help does not claim success when the
 // destination refused the text; the caller decides what a broken pipe means.
 func TestRenderingReportsWriteFailures(t *testing.T) {
-	program := testProgram(t, func(w io.Writer) error {
-		_, err := io.WriteString(w, "  -version\n")
-		return err
-	})
+	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
+	fs.Bool("version", false, "print the version and exit")
+
+	program := testProgram(t, fs)
 
 	if err := program.GeneralHelp(failingWriter{}); err == nil {
 		t.Error("GeneralHelp(failingWriter) = nil; want a write failure")

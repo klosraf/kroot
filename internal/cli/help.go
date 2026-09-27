@@ -1,16 +1,10 @@
 package cli
 
 import (
+	"flag"
 	"fmt"
 	"io"
 )
-
-// FlagsWriter renders the program's global flags, indented, without a heading.
-//
-// It is a function rather than a pre-rendered string so the text is produced
-// from the flag set itself — the single source of truth — and so it is only
-// ever rendered when help is actually asked for.
-type FlagsWriter func(w io.Writer) error
 
 // Program describes the command surface of one binary.
 type Program struct {
@@ -23,9 +17,15 @@ type Program struct {
 	UsageLine string
 	// Commands is the validated set of subcommands.
 	Commands *Registry
-	// Flags renders the global flag list. When nil, help omits the section
-	// rather than printing an empty heading.
-	Flags FlagsWriter
+	// FlagSet holds the program's global flags. Help and the manual both render
+	// from it rather than from a pre-rendered string, so neither can describe a
+	// flag the binary does not accept. When nil, both omit the section rather
+	// than printing an empty heading.
+	//
+	// The set is held rather than a rendering function because the two
+	// renderers need it in different shapes: help wants the FlagSet's own
+	// layout, while the manual wants each flag's name and usage separately.
+	FlagSet *flag.FlagSet
 }
 
 // GeneralHelp writes what the program is, how it is invoked, the commands it
@@ -39,13 +39,13 @@ func (p *Program) GeneralHelp(w io.Writer) error {
 		return err
 	}
 
-	if p.Flags == nil {
+	if p.FlagSet == nil {
 		return nil
 	}
 	if _, err := io.WriteString(w, "\nFlags:\n"); err != nil {
 		return fmt.Errorf("writing help: %w", err)
 	}
-	return p.Flags(w)
+	return PrintFlags(w, p.FlagSet)
 }
 
 // CommandHelp writes the help of one command, which the caller has already

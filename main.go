@@ -16,6 +16,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/klosraf/kroot/internal/cli"
 )
@@ -238,18 +239,32 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 		Name:      "kroot",
 		Summary:   "application skeleton",
 		UsageLine: "kroot [flags] <command>",
-		Flags: func(w io.Writer) error {
-			return cli.PrintFlags(w, fs)
-		},
+		FlagSet:   fs,
 	}
 
 	registry, err := cli.New(
 		cli.Command{
+			Name:    "man",
+			Summary: "print the manual page for kroot, or for one command",
+			Usage:   "kroot man [command]",
+			Long: "Print a manual page in roff source on standard output.\n\n" +
+				"With no argument it documents the program; with a command name\n" +
+				"it documents that command alone, under the page name\n" +
+				program.Name + "-<command>.\n\n" +
+				"  " + program.Name + " man | man -l -\n" +
+				"  " + program.Name + " man <command> | man -l -",
+			Run: func(_ context.Context, env cli.Env) error {
+				return runMan(program, env)
+			},
+		},
+		cli.Command{
 			Name:    "completion",
 			Summary: "print a shell completion script",
 			Usage:   "kroot completion <" + strings.Join(cli.Shells, "|") + ">",
-			Long: "Print the completion script for one shell on standard output, ready to install.\n\n" +
-				"The command list is written into the script, so regenerate it after upgrading kroot:\n\n" +
+			Long: "Print the completion script for one shell on standard\n" +
+				"output, ready to install.\n\n" +
+				"The command list is written into the script, so regenerate it\n" +
+				"after upgrading kroot:\n\n" +
 				"  kroot completion " + strings.Join(cli.Shells, "|") + " > <path>",
 			Run: func(_ context.Context, env cli.Env) error {
 				return runCompletion(program, env)
@@ -268,7 +283,8 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 			Name:    "version",
 			Summary: "print the version and exit",
 			Usage:   "kroot version",
-			Long:    "Print the version, the revision it was built from and the toolchain that produced it.",
+			Long: "Print the version, the revision it was built from and the toolchain\n" +
+				"that produced it.",
 			Run: func(_ context.Context, env cli.Env) error {
 				return printVersion(env.Stdout)
 			},
@@ -307,6 +323,62 @@ func runHelp(program *cli.Program, env cli.Env) error {
 
 	_ = program.CommandHelp(env.Stdout, command)
 	return nil
+}
+
+// runMan implements the manual command.
+//
+// The page is generated from the same registry help and completion render, so a
+// command cannot be reachable but undocumented. Like the completion script it is
+// requested output and goes to stdout, which is what makes it installable by
+// redirection: `kroot man | man -l -`.
+//
+// More than one operand is rejected rather than ignored, matching help: a
+// silently dropped argument hides a real mistake, and api-compatibility.md ties a
+// bad argument to exit code 2.
+func runMan(program *cli.Program, env cli.Env) error {
+	if len(env.Args) > 1 {
+		return fmt.Errorf("%w: man takes at most one command name, got %d", cli.ErrUsage, len(env.Args))
+	}
+
+	name := ""
+	if len(env.Args) == 1 {
+		name = env.Args[0]
+	}
+
+	return cli.WriteManual(env.Stdout, program, name, manualInfo())
+}
+
+// manualInfo supplies the provenance a generated page carries: the version it
+// documents and the exit contract as the code defines it.
+//
+// The exit codes are passed in rather than restated in the generator because
+// this file is where they are defined. A second copy in the manual would be free
+// to drift from the values the process actually returns, and a manual that
+// disagrees with the binary about its exit codes is worse than none.
+//
+// The date is formatted here rather than in the generator: only this layer knows
+// the build's timezone, and a raw RFC 3339 timestamp is not a useful page date.
+func manualInfo() cli.ManualInfo {
+	return cli.ManualInfo{
+		Version: version,
+		Date:    manualDate(),
+		ExitCodes: []cli.ExitCode{
+			{Code: exitSuccess, Name: "success", Meaning: "the invocation did what it was asked to do"},
+			{Code: exitFailure, Name: "runtime failure", Meaning: "I/O, network, dependency, or configuration rejected"},
+			{Code: exitUsage, Name: "usage error", Meaning: "unknown flag, unknown command, or a bad argument"},
+		},
+	}
+}
+
+// manualDate renders the build time as a page date, falling back to the raw value
+// when it is not a timestamp — "unknown" for a plain `go run`, and a stale
+// default is better shown honestly than formatted into a plausible lie.
+func manualDate() string {
+	t, err := time.Parse(time.RFC3339, buildTime)
+	if err != nil {
+		return buildTime
+	}
+	return t.UTC().Format("2006-01-02")
 }
 
 // runCompletion implements the completion command.
