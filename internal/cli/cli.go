@@ -134,16 +134,30 @@ func (r *Registry) Commands() []Command {
 // best match first and bounded by maxSuggestions. A tie is broken by name so the
 // answer is deterministic.
 func (r *Registry) Suggestions(name string) []string {
+	return suggestWithin(r.Names(), name, maxSuggestionDistance)
+}
+
+// suggestWithin returns the entries of known close enough to name to be worth
+// proposing, best match first and bounded by maxSuggestions, with a tie broken
+// by name so the answer is deterministic.
+//
+// It is a free function over a vocabulary rather than a Registry method because
+// `completion` has to propose a shell name with the same machinery, and a second
+// guesser would be a second set of bugs. The bound is a parameter because it
+// cannot be one constant for every vocabulary: two edits against a four-letter
+// word is half the word, so a bound tuned for command names turns a rejected
+// value into a list of everything that vaguely resembles it.
+func suggestWithin(known []string, name string, max int) []string {
 	type candidate struct {
 		name     string
 		distance int
 	}
 
 	var candidates []candidate
-	for _, known := range r.Names() {
-		d := editDistance(name, known)
-		if d <= maxSuggestionDistance {
-			candidates = append(candidates, candidate{name: known, distance: d})
+	for _, k := range known {
+		d := editDistance(name, k, max)
+		if d <= max {
+			candidates = append(candidates, candidate{name: k, distance: d})
 		}
 	}
 
@@ -212,14 +226,18 @@ func validName(name string) bool {
 // editDistance is the Levenshtein distance between a and b, counted in runes so
 // a non-ASCII typo is measured in characters rather than bytes.
 //
-// It exits early when the length difference alone exceeds the suggestion
-// threshold, which is the common case: a caller who typed three characters did
-// not mean a twelve-character command.
-func editDistance(a, b string) int {
+// A pair further apart than max is reported as max+1 rather than its true
+// distance: the caller only ever compares against max, and the exact number
+// carries no meaning once the answer is "too far".
+//
+// It also exits early when the length difference alone exceeds max, which is the
+// common case: a caller who typed three characters did not mean a twelve-letter
+// command.
+func editDistance(a, b string, max int) int {
 	ar, br := []rune(a), []rune(b)
 
-	if len(ar)-len(br) > maxSuggestionDistance || len(br)-len(ar) > maxSuggestionDistance {
-		return maxSuggestionDistance + 1
+	if len(ar)-len(br) > max || len(br)-len(ar) > max {
+		return max + 1
 	}
 
 	previous := make([]int, len(br)+1)

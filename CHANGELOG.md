@@ -9,6 +9,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `kroot completion <bash|fish|zsh>` writes a shell completion script to stdout.
+  The script completes subcommand names in the first operand position and nothing
+  else, because that is the only position where a subcommand is a valid answer;
+  bash falls back to filename completion for the words it declines. The command
+  list is generated from the registry, so the script cannot offer a command that
+  does not exist or omit one that does, and it is sorted so regenerating it does
+  not produce a noisy diff. The supported shells live in one exported list that
+  also supplies the usage line and the rejection message, so those three cannot
+  drift apart. Adding a shell is one entry plus one generator. An unsupported
+  shell is a usage error naming the accepted list and proposing a near miss
+  (`kroot completion bas` → `did you mean "bash"?`). The matching reuses the
+  bounded edit distance an unknown command gets, but tightened to one edit:
+  shell names are three or four letters, so at two edits `tcsh` sits within reach
+  of `zsh`, `fish` and `bash` at once and a request for an unsupported shell would
+  be answered with every supported one. Command summaries are escaped per shell
+  before they reach a script, so free text cannot terminate the quoted word it
+  sits in. This is additive — no existing behaviour changes — so it is a MINOR
+  under the versioning policy.
 - Command framework under `internal/cli`: `Registry`, typed `Command` and `Env`,
   subcommand routing, single-command help via `kroot help <cmd>`, aligned
   command listings, and closest-match suggestions (`did you mean ...?`) using

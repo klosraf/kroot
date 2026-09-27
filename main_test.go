@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -61,6 +62,26 @@ func TestRun(t *testing.T) {
 			name:    "unknown command returns error",
 			args:    []string{"bogus"},
 			wantErr: cli.ErrUnknownCommand,
+		},
+		{
+			name:       "completion prints a script on stdout",
+			args:       []string{"completion", "bash"},
+			wantOutput: "complete -o default -F _kroot_completions kroot",
+		},
+		{
+			name:    "completion without a shell is a usage error",
+			args:    []string{"completion"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "completion with too many shells is a usage error",
+			args:    []string{"completion", "bash", "zsh"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "completion with an unknown shell is a usage error",
+			args:    []string{"completion", "tcsh"},
+			wantErr: cli.ErrUsage,
 		},
 	}
 
@@ -321,6 +342,139 @@ func TestRunFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	}
 	if got := exitCodeFor(err); got != exitFailure {
 		t.Errorf("exitCodeFor(run(cancelled)) = %d; want %d", got, exitFailure)
+	}
+}
+
+// TestCompletionScriptReachesStdoutAndNothingElse covers the stream half of the
+// contract for the generated script. The script is what the caller asked for, so
+// it belongs on stdout and stderr must stay empty — otherwise a caller
+// installing it with `kroot completion zsh > _kroot` captures a diagnostic into
+// a file the shell will source.
+func TestCompletionScriptReachesStdoutAndNothingElse(t *testing.T) {
+	for _, shell := range cli.Shells {
+		t.Run(shell, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			if err := run(context.Background(), []string{"completion", shell}, &stdout, &stderr); err != nil {
+				t.Fatalf("run(completion %s) error = %v; want nil", shell, err)
+			}
+			if got := stdout.String(); strings.TrimSpace(got) == "" {
+				t.Errorf("stdout is empty; want the %s script", shell)
+			}
+			if got := stderr.String(); got != "" {
+				t.Errorf("stderr = %q; want it empty: the script is requested output, not a diagnostic", got)
+			}
+		})
+	}
+}
+
+// TestCompletionScriptNamesEveryRegisteredCommand is the contract that keeps the
+// two halves of the framework honest: the script is generated from the registry,
+// so it cannot offer a command that does not exist and cannot omit one that
+// does. A completion missing a command teaches the caller the command is gone.
+func TestCompletionScriptNamesEveryRegisteredCommand(t *testing.T) {
+	program, err := newProgram(flag.NewFlagSet("kroot", flag.ContinueOnError))
+	if err != nil {
+		t.Fatalf("newProgram() error = %v; want nil", err)
+	}
+
+	for _, shell := range cli.Shells {
+		t.Run(shell, func(t *testing.T) {
+			var stdout bytes.Buffer
+
+			if err := run(context.Background(), []string{"completion", shell}, &stdout, io.Discard); err != nil {
+				t.Fatalf("run(completion %s) error = %v; want nil", shell, err)
+			}
+
+			script := stdout.String()
+			for _, c := range program.Commands.Commands() {
+				if !strings.Contains(script, c.Name) {
+					t.Errorf("%s script omits command %q", shell, c.Name)
+				}
+			}
+		})
+	}
+}
+
+// TestCompletionFailuresNameTheSupportedShells asserts the rejection is
+// actionable on its own. A caller who typed "kroot completion bas" learns the
+// answer from the error — both the vocabulary and the near miss — without
+// consulting the manual.
+func TestCompletionFailuresNameTheSupportedShells(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "no shell names the vocabulary", args: []string{"completion"}, want: strings.Join(cli.Shells, "|")},
+		{name: "unknown shell names the vocabulary", args: []string{"completion", "tcsh"}, want: "tcsh"},
+		{name: "a near miss is proposed", args: []string{"completion", "bas"}, want: "did you mean \"bash\""},
+		{name: "too many shells is rejected", args: []string{"completion", "bash", "zsh"}, want: "one shell"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			err := run(context.Background(), tc.args, &stdout, &stderr)
+
+			if !errors.Is(err, cli.ErrUsage) {
+				t.Fatalf("run(%v) error = %v; want it to wrap ErrUsage", tc.args, err)
+			}
+			if got := stdout.String(); got != "" {
+				t.Errorf("stdout = %q; want it empty: a failure must not write to stdout", got)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("run(%v) error = %v; want it to contain %q", tc.args, err, tc.want)
+			}
+		})
+	}
+}
+
+// TestHelpForCompletionNamesTheShells covers discoverability: the shell list a
+// caller needs is in `kroot help completion`, derived from cli.Shells rather
+// than restated, so a shell added later appears here without a second edit.
+func TestHelpForCompletionNamesTheShells(t *testing.T) {
+	var stdout bytes.Buffer
+
+	if err := run(context.Background(), []string{"help", "completion"}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run(help completion) error = %v; want nil", err)
+	}
+
+	got := stdout.String()
+	for _, want := range append([]string{"kroot completion"}, cli.Shells...) {
+		if !strings.Contains(got, want) {
+			t.Errorf("help for completion = %q; want it to contain %q", got, want)
+		}
+	}
+}
+
+// TestCompletionExitCodesMatchTheDocumentedContract adds the command to the
+// exit-code table: a generated script is exit 0, and every way of getting the
+// shell name wrong is exit 2 rather than a runtime failure, because each is
+// fixed by reinvoking.
+func TestCompletionExitCodesMatchTheDocumentedContract(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{name: "bash script succeeds", args: []string{"completion", "bash"}, want: exitSuccess},
+		{name: "zsh script succeeds", args: []string{"completion", "zsh"}, want: exitSuccess},
+		{name: "fish script succeeds", args: []string{"completion", "fish"}, want: exitSuccess},
+		{name: "no shell is a usage error", args: []string{"completion"}, want: exitUsage},
+		{name: "unknown shell is a usage error", args: []string{"completion", "tcsh"}, want: exitUsage},
+		{name: "too many shells is a usage error", args: []string{"completion", "bash", "zsh"}, want: exitUsage},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+
+			if got := exitCodeFor(run(context.Background(), tc.args, &out, io.Discard)); got != tc.want {
+				t.Errorf("exitCodeFor(run(%v)) = %d; want %d", tc.args, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -247,7 +247,7 @@ func TestEditDistanceMeasuresRunesNotBytes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := editDistance(tc.a, tc.b); got != tc.want {
+			if got := editDistance(tc.a, tc.b, maxSuggestionDistance); got != tc.want {
 				t.Errorf("editDistance(%q, %q) = %d; want %d", tc.a, tc.b, got, tc.want)
 			}
 		})
