@@ -22,6 +22,14 @@ Adding a subcommand or an optional flag is a MINOR change. Removing or renaming
 one is a MAJOR change, and is preceded by a deprecation MINOR that prints a
 warning naming the replacement.
 
+### Streams
+
+Stdout carries what the caller asked for: help text on request, the `version`
+line. Stderr carries diagnostics: the structured error record, and the usage
+text when the invocation failed. A failed invocation never writes to stdout, so
+a caller that redirects or pipes stdout does not capture help text from a
+failure, and a caller that discards stdout still sees the diagnostic on stderr.
+
 ### HTTP API
 
 | Stable | Not stable |
