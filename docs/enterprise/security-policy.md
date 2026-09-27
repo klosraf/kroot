@@ -52,7 +52,7 @@ integrity of whatever it is wired to.
 
 | Gate | Scope |
 |---|---|
-| `govulncheck ./...` | every PR touching Go code |
+| `govulncheck ./...` | every pull request, including documentation-only changes (the job has no path filter) |
 | `golangci-lint` with `gosec` | every PR |
 | Dependency review | every PR that modifies `go.mod` / `go.sum` |
 | SBOM (`spdx-json`) | every GitHub Release |

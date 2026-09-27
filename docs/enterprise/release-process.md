@@ -41,8 +41,11 @@ git log --oneline "$(git describe --tags --abbrev=0)"..HEAD
 10. **Merge back** — the release branch merges into `main`; bump the development
     version if the project tracks one.
 
-Steps 6–8 are automated by the release workflow; the rest are a human
-responsibility and are recorded in the release PR description.
+Steps 6–8 are **not automated yet**: this repository has no release workflow and
+has never cut a tag, so signing the tag, building the artifacts and publishing the
+GitHub Release are manual. Until that is automated (a change that needs its own
+ADR), this section is a checklist rather than a description of tooling. Every
+other step is a human responsibility, recorded in the release PR description.
 
 ## Artifacts
 

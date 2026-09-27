@@ -51,6 +51,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Five documents claimed enforcement that does not exist, contradicting the rule
+  in `docs/enterprise/README.md` that a rule which is not enforced automatically
+  must say so explicitly. `.github/dependabot.yml` stated that Dependabot pull
+  requests are exempt from the commit-message gate, while `ci.yaml` states the
+  opposite and the exemption had in fact been dropped;
+  `docs/enterprise/release-process.md` stated that the tag, artifact and publish
+  steps are "automated by the release workflow", but no release workflow exists
+  and no tag has ever been cut; `AGENTS.md` and
+  `docs/enterprise/security-policy.md` both described `govulncheck` as running
+  "on every PR touching Go code" when the job has no path filter; and
+  `docs/enterprise/observability.md` stated that `KROOT_LOG_LEVEL` controls the
+  log level when no Go file reads any `KROOT_*` variable. All five now describe
+  what the repository actually does.
 - The `vulnerabilities` gate passed for the wrong reason. `GOVULN_VERSION` was
   pinned to `v1.8.0`, which requires Go >= 1.26.0, while the module is pinned to
   Go 1.23.12. Under the default `GOTOOLCHAIN=auto`, `go install` silently

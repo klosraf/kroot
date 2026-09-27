@@ -82,7 +82,8 @@ Details: [`docs/enterprise/testing-strategy.md`](./docs/enterprise/testing-strat
   variables or mounted files; `.env` files are git-ignored.
 - All input crossing a trust boundary is validated and bounded.
 - SQL, once it exists, is parameterised — never string-interpolated.
-- `govulncheck ./...` runs in CI on every PR touching Go code.
+- `govulncheck ./...` runs in CI on every pull request: the job has no path
+  filter, so a documentation-only change runs it too.
 - Vulnerabilities are reported privately per [`SECURITY.md`](./SECURITY.md).
 
 Details: [`docs/enterprise/security-policy.md`](./docs/enterprise/security-policy.md).
