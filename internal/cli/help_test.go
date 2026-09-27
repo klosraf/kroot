@@ -100,6 +100,51 @@ func TestGeneralHelpOmitsAnEmptyFlagsSection(t *testing.T) {
 	}
 }
 
+// Two spaces is asserted, not one: measuring the column on the bare flag name
+// instead of the rendered "-name" shortens the gap on every row, which is
+// invisible while a single flag exists and appears the moment a longer one is
+// added. That is why the width is computed from the rendered label.
+func TestPrintFlagsUsesTheCommandColumnRule(t *testing.T) {
+	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
+	fs.Bool("version", false, "print the version and exit")
+	fs.Bool("output", false, "choose an output format")
+
+	var out strings.Builder
+	if err := PrintFlags(&out, fs); err != nil {
+		t.Fatalf("PrintFlags() error = %v; want nil", err)
+	}
+
+	got := out.String()
+	if strings.ContainsRune(got, '\t') {
+		t.Errorf("PrintFlags() = %q; want no tab in human-facing output", got)
+	}
+	if !strings.Contains(got, "  -version  print the version and exit\n") {
+		t.Errorf("PrintFlags() = %q; want the longest label padded to a two-space gap", got)
+	}
+}
+
+// TestPrintFlagsNormalisesMultilineUsage guards the column against authored prose.
+// A usage string containing a newline would wrap onto an unindented second line
+// and break the alignment of every row after it, which is the defect this
+// renderer exists to remove.
+func TestPrintFlagsNormalisesMultilineUsage(t *testing.T) {
+	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
+	fs.String("mode", "", "choose a mode\nand a format")
+
+	var out strings.Builder
+	if err := PrintFlags(&out, fs); err != nil {
+		t.Fatalf("PrintFlags() error = %v; want nil", err)
+	}
+
+	got := out.String()
+	if lines := strings.Count(strings.TrimSuffix(got, "\n"), "\n"); lines != 0 {
+		t.Errorf("PrintFlags() = %q; want a single row, got %d lines", got, lines+1)
+	}
+	if !strings.Contains(got, "-mode  choose a mode and a format\n") {
+		t.Errorf("PrintFlags() = %q; want the newline folded into a space", got)
+	}
+}
+
 // TestCommandHelpPrefersLongAndFallsBack proves both halves of the contract:
 // the detailed text wins when present, and the summary is used when it is not.
 func TestCommandHelpPrefersLongAndFallsBack(t *testing.T) {

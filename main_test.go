@@ -526,6 +526,35 @@ func TestNoSurfaceEmitsAnEscapeSequence(t *testing.T) {
 	}
 }
 
+// A tab in human-facing output is not a style preference. It re-expands against
+// whatever tab-stop the reader's terminal happens to use, it survives
+// reindentation, and it makes a byte-exact assertion impossible. It reached the
+// help screen because the Flags block was rendered by the standard library's
+// PrintDefaults while the Commands block above it was rendered by kroot — two
+// typographic rules inside one screen. Asserting the absence of the byte is what
+// stops the next third-party renderer from reintroducing it.
+func TestNoSurfaceEmitsATab(t *testing.T) {
+	for _, tc := range allSurfaceCases(t) {
+		if strings.HasPrefix(tc.name, "completion ") {
+			// Shell scripts are code a shell parses, not prose read at a
+			// terminal. A tab inside one is a shell's business, and rewriting
+			// a generated script to satisfy a human-facing rule would break the
+			// syntax that rule is protecting.
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderSurface(t, tc.args)
+
+			i := strings.IndexByte(got, '\t')
+			if i < 0 {
+				return
+			}
+			start, end := max(0, i-40), min(len(got), i+40)
+			t.Errorf("%s emitted a tab at offset %d: …%q…", tc.name, i, got[start:end])
+		})
+	}
+}
+
 // TestHumanFacingSurfacesStayWithinTheDesignWidth pins the layout budget: 80 columns
 // for what a person reads in a terminal or in a diff — the help output and the roff
 // source of the manual. Output is ASCII, so bytes are columns and no conversion is
