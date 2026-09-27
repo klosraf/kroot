@@ -94,6 +94,70 @@ func TestRunToleratesHelpWriteError(t *testing.T) {
 	}
 }
 
+// TestRunHelpFlagIsNotAnError covers `-h` and `-help`. flag returns
+// flag.ErrHelp, which run() must not treat as a failure: the user asked for help
+// and got help, so the documented exit code is 0 (api-compatibility.md,
+// "Exit codes"). Before the fix this reported a runtime failure and exited 1,
+// while `kroot help` exited 0 — two spellings of one request, two answers.
+func TestRunHelpFlagIsNotAnError(t *testing.T) {
+	for _, arg := range []string{"-h", "-help"} {
+		t.Run(arg, func(t *testing.T) {
+			var out bytes.Buffer
+
+			if err := run([]string{arg}, &out); err != nil {
+				t.Errorf("run(%s) error = %v; want nil: help is a success, not a failure", arg, err)
+			}
+			if got := out.String(); !strings.Contains(got, "Usage:") {
+				t.Errorf("run(%s) output = %q; want it to contain %q", arg, got, "Usage:")
+			}
+		})
+	}
+}
+
+// TestExitCodesMatchTheDocumentedContract pins the three values in
+// docs/enterprise/api-compatibility.md § "Exit codes". Scripts branch on the
+// status alone, so a usage error reported as a runtime failure — or the reverse —
+// misleads a caller that never reads the output.
+func TestExitCodesMatchTheDocumentedContract(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{name: "no arguments prints help and succeeds", args: nil, want: exitSuccess},
+		{name: "help succeeds", args: []string{"help"}, want: exitSuccess},
+		{name: "-h succeeds", args: []string{"-h"}, want: exitSuccess},
+		{name: "-help succeeds", args: []string{"-help"}, want: exitSuccess},
+		{name: "version succeeds", args: []string{"version"}, want: exitSuccess},
+		{name: "unknown command is a usage error", args: []string{"bogus"}, want: exitUsage},
+		{name: "unknown flag is a usage error", args: []string{"-nope"}, want: exitUsage},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+
+			if got := exitCodeFor(run(tc.args, &out)); got != tc.want {
+				t.Errorf("exitCodeFor(run(%v)) = %d; want %d", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRuntimeFailureIsNotAUsageError covers the other half of the contract: a
+// failure the caller cannot fix by reinvoking must not be reported as exit 2.
+// Here the invocation is correct and only the write fails.
+func TestRuntimeFailureIsNotAUsageError(t *testing.T) {
+	err := run([]string{"version"}, failingWriter{})
+
+	if errors.Is(err, ErrUsage) {
+		t.Fatalf("run(version) with a failing writer = %v; must not be a usage error: the invocation was correct", err)
+	}
+	if got := exitCodeFor(err); got != exitFailure {
+		t.Errorf("exitCodeFor(...) = %d; want %d", got, exitFailure)
+	}
+}
+
 // TestVersionDefaultsToDev asserts the value used when the linker does not
 // inject a version, so a stale default is caught rather than shipped.
 func TestVersionDefaultsToDev(t *testing.T) {

@@ -25,13 +25,42 @@ var (
 	buildTime = "unknown"
 )
 
+// Exit codes are part of the public CLI contract and scripts branch on them; see
+// docs/enterprise/api-compatibility.md § "Exit codes". They are named here rather
+// than written at the os.Exit call sites so that a typo cannot silently redefine
+// what a caller observes.
+const (
+	exitSuccess = 0 // the invocation did what it was asked to do
+	exitFailure = 1 // runtime failure: I/O, network, dependency, configuration
+	exitUsage   = 2 // usage error: unknown flag, unknown command, bad argument
+)
+
+// ErrUsage marks a failure caused by how the program was invoked rather than by
+// what it was asked to do. It is the sentinel behind exit code 2, so a caller can
+// tell "you called me wrong" from "it broke while running".
+var ErrUsage = errors.New("usage error")
+
 // ErrUnknownCommand is returned when the user passes an unrecognised command.
 var ErrUnknownCommand = errors.New("unknown command")
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		slog.Error("kroot failed", "err", err)
-		os.Exit(1)
+		os.Exit(exitCodeFor(err))
+	}
+}
+
+// exitCodeFor maps an error from run to the exit code the contract promises. A
+// failure the caller can fix by reinvoking is a usage error; everything else is a
+// runtime failure, because no reinvocation changes the outcome.
+func exitCodeFor(err error) int {
+	switch {
+	case err == nil:
+		return exitSuccess
+	case errors.Is(err, ErrUsage):
+		return exitUsage
+	default:
+		return exitFailure
 	}
 }
 
@@ -44,7 +73,16 @@ func run(args []string, out io.Writer) error {
 	showVersion := fs.Bool("version", false, "print the version and exit")
 
 	if err := fs.Parse(args); err != nil {
-		return fmt.Errorf("parsing flags: %w", err)
+		// flag.ErrHelp means the user asked for help and got it: printing usage
+		// and reporting success is what the contract says, and it is what
+		// `kroot help` already did. `-h` failing while `help` succeeded was two
+		// spellings of one request with two different answers.
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		// Every other parse failure is a usage error: no amount of retrying
+		// makes -nope a valid flag.
+		return fmt.Errorf("%w: parsing flags: %w", ErrUsage, err)
 	}
 
 	if *showVersion {
@@ -63,7 +101,10 @@ func run(args []string, out io.Writer) error {
 	case "version":
 		return printVersion(out)
 	default:
-		return fmt.Errorf("%w: %q", ErrUnknownCommand, command)
+		// Wrapped in ErrUsage as well: an unrecognised command is the caller's
+		// mistake and maps to exit 2, while ErrUnknownCommand still answers
+		// "which command?" for tests and callers inspecting the chain.
+		return fmt.Errorf("%w: %w: %q", ErrUsage, ErrUnknownCommand, command)
 	}
 }
 
