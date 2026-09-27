@@ -73,11 +73,17 @@ install:
 run:
 	$(GO) run . $(ARGS)
 
-fmt:
-	gofmt -l -w .
+# Format through golangci-lint's configured formatter set (gofmt, gofumpt and
+# goimports, see .golangci.yaml). That is the set the lint gate and CI enforce and
+# the set docs/enterprise/coding-standards.md documents. Calling plain `gofmt`
+# here accepted files that gofumpt rejects, so `make fmt` could leave a tree that
+# then failed `make lint`, and the two gates disagreed about "formatted".
+fmt: $(GOLANGCI)
+	$(GOLANGCI) fmt
 
-fmt-check:
-	@test -z "$$(gofmt -l .)" || { echo "unformatted files:"; gofmt -l .; exit 1; }
+# --diff makes the check non-destructive and exits non-zero on any difference.
+fmt-check: $(GOLANGCI)
+	@$(GOLANGCI) fmt --diff
 
 vet:
 	$(GO) vet ./...
