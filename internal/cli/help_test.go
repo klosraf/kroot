@@ -100,6 +100,64 @@ func TestGeneralHelpOmitsAnEmptyFlagsSection(t *testing.T) {
 	}
 }
 
+// It asserts the two facts a reader needs rather than a whole sentence, so the
+// wording stays editable without the test becoming the reason it is not.
+func TestGeneralHelpNamesTheNextStep(t *testing.T) {
+	registry, err := New(
+		Command{Name: "help", Summary: "print this help", Usage: "kroot help", Long: "Print help.", Run: noop()},
+		Command{Name: "man", Summary: "print the manual", Run: noop()},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+
+	program := &Program{
+		Name:      "kroot",
+		Summary:   "application skeleton",
+		UsageLine: "kroot [flags] <command>",
+		Commands:  registry,
+	}
+
+	var out strings.Builder
+	if err := program.GeneralHelp(&out); err != nil {
+		t.Fatalf("GeneralHelp() error = %v; want nil", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{`"kroot help <command>"`, `"man kroot"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("GeneralHelp() output = %q; want it to point at %s", got, want)
+		}
+	}
+}
+
+// TestGeneralHelpOmitsNextStepsItCannotName keeps the block honest in the other
+// direction: a program without a man command must not advertise one. The rule is
+// the same one the empty Flags section follows — no text over nothing.
+func TestGeneralHelpOmitsNextStepsItCannotName(t *testing.T) {
+	var out strings.Builder
+
+	// testProgram registers help but not man, so the man pointer must be absent
+	// while the help pointer remains.
+	if err := testProgram(t, nil).GeneralHelp(&out); err != nil {
+		t.Fatalf("GeneralHelp() error = %v; want nil", err)
+	}
+
+	got := out.String()
+	if strings.Contains(got, "man kroot") {
+		t.Errorf("GeneralHelp() output = %q; want no manual pointer when no man command exists", got)
+	}
+	if !strings.Contains(got, `"kroot help <command>"`) {
+		t.Errorf("GeneralHelp() output = %q; want the help pointer, which does exist", got)
+	}
+}
+
+// TestPrintFlagsUsesTheCommandColumnRule is the regression test for the tab. The
+// Flags block used to be rendered by (*flag.FlagSet).PrintDefaults, which
+// separates a name from its usage with a tab and a four-space hanging indent,
+// while the Commands block directly above it used a computed column. The screen
+// therefore carried two typographic rules at once.
+//
 // Two spaces is asserted, not one: measuring the column on the bare flag name
 // instead of the rendered "-name" shortens the gap on every row, which is
 // invisible while a single flag exists and appears the moment a longer one is
