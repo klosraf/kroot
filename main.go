@@ -225,7 +225,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 	command, ok := program.Commands.Lookup(name)
 	if !ok {
-		return program.Commands.Error(name)
+		return program.UnknownCommand(name)
+	}
+
+	// -h and --help as the first operand ask for this command's help, and are
+	// routed through the help command rather than a second renderer: the two
+	// spellings then print the same bytes, tolerate a failed write the same way,
+	// and exit alike. Only the first operand counts — after it, -h is data, which
+	// is what the surplus-operand rule says about data. The program's own -h keeps
+	// coming from flag.ErrHelp above. See
+	// docs/adr/0004-per-command-help-flags.md.
+	if isHelpOperand(operands) {
+		return runHelp(program, cli.Env{Stdout: stdout, Stderr: stderr, Args: []string{name}})
 	}
 
 	return command.Run(ctx, cli.Env{Stdout: stdout, Stderr: stderr, Args: operands})
@@ -253,6 +264,7 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 				program.Name + "-<command>.\n\n" +
 				"  " + program.Name + " man | man -l -\n" +
 				"  " + program.Name + " man <command> | man -l -",
+			Operands: cli.Operands{CommandNames: true},
 			Run: func(_ context.Context, env cli.Env) error {
 				return runMan(program, env)
 			},
@@ -266,15 +278,20 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 				"The command list is written into the script, so regenerate it\n" +
 				"after upgrading kroot:\n\n" +
 				"  kroot completion " + strings.Join(cli.Shells, "|") + " > <path>",
+			// The shells slice itself, not a copy of it: a fourth shell added to
+			// Shells then reaches help, the manual and every completion script
+			// without a line being edited here.
+			Operands: cli.Operands{Values: cli.Shells},
 			Run: func(_ context.Context, env cli.Env) error {
 				return runCompletion(program, env)
 			},
 		},
 		cli.Command{
-			Name:    "help",
-			Summary: "print this help, or the help of one command",
-			Usage:   "kroot help [command]",
-			Long:    "Print the command list, or the detail of one command when a name is given.",
+			Name:     "help",
+			Summary:  "print this help, or the help of one command",
+			Usage:    "kroot help [command]",
+			Long:     "Print the command list, or the detail of one command when a name is given.",
+			Operands: cli.Operands{CommandNames: true},
 			Run: func(_ context.Context, env cli.Env) error {
 				return runHelp(program, env)
 			},
@@ -286,6 +303,9 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 			Long: "Print the version, the revision it was built from and the toolchain\n" +
 				"that produced it.",
 			Run: func(_ context.Context, env cli.Env) error {
+				if err := rejectOperands(program, "version", env.Args); err != nil {
+					return err
+				}
 				return printVersion(env.Stdout)
 			},
 		},
@@ -296,6 +316,39 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 
 	program.Commands = registry
 	return program, nil
+}
+
+// isHelpOperand reports whether a command's operands begin with the help flag as a
+// caller writes it.
+//
+// It is a spelling handled by dispatch, not a flag a command defines: there is no
+// per-command flag set, and -h must never reach a command's Run. Only the first
+// operand counts, mirroring that flags come before operands in what callers write.
+// See docs/adr/0004-per-command-help-flags.md.
+func isHelpOperand(operands []string) bool {
+	if len(operands) == 0 {
+		return false
+	}
+	return operands[0] == "-h" || operands[0] == "--help"
+}
+
+// rejectOperands turns an operand a command cannot accept into a usage error.
+//
+// help and man already answered an extra operand this way, and version did not:
+// `kroot version foo` printed the version and exited 0. That contradicts the
+// rule api-compatibility.md states for undefined input — that it "will not be
+// silently accepted" — and it hides a real mistake, because a caller who typed a
+// third word meant something by it. The message names the command's own help, so
+// the answer to "then what does it accept?" is one invocation away.
+//
+// The program is passed rather than its name so the hint names the binary as the
+// caller typed it.
+func rejectOperands(program *cli.Program, command string, operands []string) error {
+	if len(operands) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s takes no arguments, got %d: see %q",
+		cli.ErrUsage, command, len(operands), program.Name+" help "+command)
 }
 
 // runHelp implements the help command.
@@ -318,7 +371,7 @@ func runHelp(program *cli.Program, env cli.Env) error {
 
 	command, ok := program.Commands.Lookup(env.Args[0])
 	if !ok {
-		return program.Commands.Error(env.Args[0])
+		return program.UnknownCommand(env.Args[0])
 	}
 
 	_ = program.CommandHelp(env.Stdout, command)
@@ -349,12 +402,14 @@ func runMan(program *cli.Program, env cli.Env) error {
 }
 
 // manualInfo supplies the provenance a generated page carries: the version it
-// documents and the exit contract as the code defines it.
+// documents, the exit contract and the configuration vocabulary, all as the code
+// defines them.
 //
-// The exit codes are passed in rather than restated in the generator because
-// this file is where they are defined. A second copy in the manual would be free
-// to drift from the values the process actually returns, and a manual that
-// disagrees with the binary about its exit codes is worse than none.
+// The exit codes and the accepted log levels are passed in rather than restated
+// in the generator because this file is where they are defined. A second copy in
+// the manual would be free to drift from the values the process actually
+// accepts, and a manual that disagrees with the binary about its own contract is
+// worse than none.
 //
 // The date is formatted here rather than in the generator: only this layer knows
 // the build's timezone, and a raw RFC 3339 timestamp is not a useful page date.
@@ -366,6 +421,12 @@ func manualInfo() cli.ManualInfo {
 			{Code: exitSuccess, Name: "success", Meaning: "the invocation did what it was asked to do"},
 			{Code: exitFailure, Name: "runtime failure", Meaning: "I/O, network, dependency, or configuration rejected"},
 			{Code: exitUsage, Name: "usage error", Meaning: "unknown flag, unknown command, or a bad argument"},
+		},
+		Env: []cli.EnvVar{
+			// The vocabulary is the very slice parseLogLevel validates against,
+			// so the page cannot advertise a level the binary would reject —
+			// including one added later.
+			{Name: "KROOT_LOG_LEVEL", Default: "info", Values: allowedLogLevels},
 		},
 	}
 }
@@ -406,7 +467,7 @@ func runCompletion(program *cli.Program, env cli.Env) error {
 	commands := program.Commands.Commands()
 	entries := make([]cli.Entry, 0, len(commands))
 	for _, c := range commands {
-		entries = append(entries, cli.Entry{Name: c.Name, Summary: c.Summary})
+		entries = append(entries, cli.Entry{Name: c.Name, Summary: c.Summary, Operands: c.Operands})
 	}
 
 	return cli.WriteCompletion(env.Stdout, env.Args[0], program.Name, entries)

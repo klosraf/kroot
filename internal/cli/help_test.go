@@ -133,6 +133,82 @@ func TestCommandHelpPrefersLongAndFallsBack(t *testing.T) {
 	}
 }
 
+// TestUnknownCommandNamesTheCommandListWhenNothingIsClose covers the one
+// rejection a caller cannot act on by themselves. A near miss is answered with
+// the command it meant, which is a recovery in itself; a name that resembles
+// nothing would otherwise leave the caller holding a rejection with no next step
+// at all, so the command list is named instead. The suggestion suppresses the
+// pointer on purpose — two hints in one line bury the one that matters.
+func TestUnknownCommandNamesTheCommandListWhenNothingIsClose(t *testing.T) {
+	program := testProgram(t, nil)
+
+	near := program.UnknownCommand("versioo")
+	if !errors.Is(near, ErrUnknownCommand) {
+		t.Errorf("UnknownCommand(versioo) = %v; want it to wrap ErrUnknownCommand", near)
+	}
+	if want := `did you mean "version"?`; !strings.Contains(near.Error(), want) {
+		t.Errorf("UnknownCommand(versioo) = %q; want it to contain %q", near, want)
+	}
+	if strings.Contains(near.Error(), "command list") {
+		t.Errorf("UnknownCommand(versioo) = %q; want no pointer to the command list when the nearest command is already named", near)
+	}
+
+	far := program.UnknownCommand("kubernetes")
+	if !errors.Is(far, ErrUsage) {
+		t.Errorf("UnknownCommand(kubernetes) = %v; want it to wrap ErrUsage", far)
+	}
+	if want := `"kroot help"`; !strings.Contains(far.Error(), want) {
+		t.Errorf("UnknownCommand(kubernetes) = %q; want it to contain %q so the caller has a next step", far, want)
+	}
+}
+
+// TestCommandListStaysWithinTheDesignWidth renders the help for a command set
+// built to the edge of the budget and measures the bytes that come out.
+//
+// The registry already rejects a wider set, and this checks the half it cannot:
+// that the number New enforces and the layout writeCommandList produces are the
+// same number. If the padding or the formula changes on one side only, the
+// rendered line is what notices — which is the whole argument for measuring
+// output rather than trusting two places that happen to agree today.
+func TestCommandListStaysWithinTheDesignWidth(t *testing.T) {
+	// Sized to the budget by arithmetic rather than written out, so the test
+	// cannot rot into checking a set that never reached the boundary.
+	summary := "print the completion script for one shell"
+	name := strings.Repeat("c", designWidth-4-len(summary))
+
+	registry, err := New(
+		Command{Name: name, Summary: summary, Run: noop()},
+		Command{Name: "version", Summary: "print the version", Run: noop()},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v; want a set at the budget to be accepted", err)
+	}
+
+	program := &Program{
+		Name:      "kroot",
+		Summary:   "an application",
+		UsageLine: "kroot [flags] <command>",
+		Commands:  registry,
+	}
+	var out strings.Builder
+	if err := program.GeneralHelp(&out); err != nil {
+		t.Fatalf("GeneralHelp() error = %v; want nil", err)
+	}
+
+	rendered := out.String()
+	for _, line := range strings.Split(rendered, "\n") {
+		if len(line) > designWidth {
+			t.Errorf("a rendered line is %d columns, over the design width of %d:\n%s",
+				len(line), designWidth, line)
+		}
+	}
+	// The widest line has to reach the budget, or the loop above would pass on a
+	// set that never came close to it.
+	if !strings.Contains(rendered, summary) {
+		t.Errorf("the rendered list does not contain the summary it was built for:\n%s", rendered)
+	}
+}
+
 // TestRenderingReportsWriteFailures proves help does not claim success when the
 // destination refused the text; the caller decides what a broken pipe means.
 func TestRenderingReportsWriteFailures(t *testing.T) {

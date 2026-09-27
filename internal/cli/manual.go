@@ -24,6 +24,23 @@ type ExitCode struct {
 	Meaning string
 }
 
+// EnvVar is one configuration variable as the manual documents it.
+//
+// It is data rather than a paragraph for the same reason ExitCode is: the
+// accepted values are handed in from the code that validates them, so the page
+// cannot advertise a value the binary rejects. The manual is where a caller
+// looks up what a variable accepts, and a manual that disagrees with the parser
+// is worse than one that says nothing.
+type EnvVar struct {
+	// Name is the variable as the caller sets it, e.g. "KROOT_LOG_LEVEL".
+	Name string
+	// Default is what the program uses when the variable is unset. Empty
+	// means the variable has no default to state.
+	Default string
+	// Values is the accepted vocabulary, in the order the parser presents it.
+	Values []string
+}
+
 // ManualInfo is the provenance a generated page carries.
 //
 // A manual page that does not say which version it documents cannot be checked
@@ -40,6 +57,11 @@ type ManualInfo struct {
 	// ExitCodes documents the exit contract. When empty, the section is
 	// omitted rather than printed empty.
 	ExitCodes []ExitCode
+	// Env documents the configuration variables the program reads. It belongs
+	// to the program page: a variable is read by the program, not by one
+	// command, and repeating it under every command is how a manual starts
+	// disagreeing with itself. When empty, the section is omitted.
+	Env []EnvVar
 }
 
 // WriteManual writes the roff source of a manual page to w.
@@ -62,7 +84,10 @@ func WriteManual(w io.Writer, p *Program, command string, info ManualInfo) error
 
 	c, ok := p.Commands.Lookup(command)
 	if !ok {
-		return p.Commands.Error(command)
+		// The program's own rejection, so `kroot man hlep` is answered exactly
+		// as `kroot hlep` is: with the nearest command, or with the command
+		// list when nothing is near.
+		return p.UnknownCommand(command)
 	}
 	return commandPage(w, p, c, info)
 }
@@ -110,6 +135,21 @@ func programPage(w io.Writer, p *Program, info ManualInfo) error {
 		}
 		for _, f := range flags {
 			if err := writeTerm(w, dash(f.name), f.usage); err != nil {
+				return err
+			}
+		}
+	}
+
+	// The environment is documented on the program page rather than repeated
+	// per command, and it is documented at all because a caller who never reads
+	// the README still reads this: the manual is the surface they were told to
+	// trust.
+	if len(info.Env) > 0 {
+		if err := writeSection(w, "ENVIRONMENT", ""); err != nil {
+			return err
+		}
+		for _, v := range info.Env {
+			if err := writeTerm(w, v.Name, envDefinition(v)); err != nil {
 				return err
 			}
 		}
@@ -256,6 +296,21 @@ func collectFlags(fs *flag.FlagSet) []flagNames {
 // the definition starts on its own line, which is what .TP expects.
 func dash(name string) string {
 	return "-" + name
+}
+
+// envDefinition describes one variable in one sentence: what it accepts, and
+// what happens when it is unset. Each clause is omitted when it would say
+// nothing, so a variable with no vocabulary or no default is not described by a
+// fragment like "One of: .".
+func envDefinition(v EnvVar) string {
+	var parts []string
+	if len(v.Values) > 0 {
+		parts = append(parts, fmt.Sprintf("One of: %s.", strings.Join(v.Values, ", ")))
+	}
+	if v.Default != "" {
+		parts = append(parts, fmt.Sprintf("Unset means %q.", v.Default))
+	}
+	return strings.Join(parts, " ")
 }
 
 // writeText writes a block of body text, one output line per input line.
