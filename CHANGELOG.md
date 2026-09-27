@@ -42,6 +42,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- CI runs `test (macos-latest)` only on a push to `main`, not on every pull
+  request. macOS runners bill at a 10x rate multiplier, and the account was
+  consuming roughly 12,400 billable-equivalent minutes per month against a 3,000
+  per month allowance — at which point GitHub refused to start any job in the
+  repository, reporting only "The job was not started because recent account
+  payments have failed or your spending limit needs to be increased", which is
+  indistinguishable from a code failure through the API. Cross-platform
+  verification still happens, because merging *is* a push.
+  `test (macos-latest)` is consequently no longer a required status check on
+  `main`: a required check that a pull request never reports blocks that pull
+  request permanently. See
+  `docs/adr/0002-keep-macos-verification-off-pull-requests.md`.
 - Module path corrected from `github.com/kroot/kroot` to
   `github.com/klosraf/kroot`, matching the GitHub account that owns the
   repository.
