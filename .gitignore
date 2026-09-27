@@ -30,3 +30,12 @@ coverage.html
 .vscode/
 *.swp
 
+# Build tooling.
+#
+# Some developer machines carry a `Makefile` rule in their global ignore file
+# (the qmake/Qt one, `core.excludesFile`). That rule silently kept this
+# repository's own Makefile out of version control, so a fresh clone had no
+# `make` entry point at all. A local `.gitignore` takes precedence over the
+# global file, so re-including it here makes the repository immune to that trap.
+!Makefile
+

@@ -51,6 +51,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The `Makefile` was never under version control. A `Makefile` rule in a
+  developer's global ignore file (`core.excludesFile`, the qmake/Qt rule) matched
+  it, so `git add .` skipped it silently and no commit ever contained it. A fresh
+  clone therefore had no `make` entry point at all: `make ci` — the "local
+  definition of done" in `AGENTS.md` §7 — did not exist, the install steps for
+  the pinned `golangci-lint` and `govulncheck` did not exist, and every command in
+  the README table was unavailable. CI stayed green only because the workflow
+  reimplements each command inline instead of calling `make`, which is also why
+  the two definitions of "done" could diverge unnoticed. The Makefile is now
+  tracked, `.gitignore` re-includes it so a local ignore file cannot hide it
+  again, and CI fails if it stops being tracked.
 - The exit codes documented in `docs/enterprise/api-compatibility.md` were not
   implemented: every failure exited `1`, so the usage code `2` was unreachable
   and `kroot -h` reported a runtime failure while `kroot help` reported success —
