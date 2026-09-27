@@ -6,13 +6,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"runtime"
+	"strings"
 )
 
 // Build metadata. All three values are injected at link time:
@@ -46,10 +49,30 @@ var ErrUsage = errors.New("usage error")
 var ErrUnknownCommand = errors.New("unknown command")
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	os.Exit(realMain(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// realMain wires configuration into the process and returns the exit code. It
+// reads KROOT_LOG_LEVEL itself so the wiring — not only the parsing — is
+// covered, and so a typo in the variable name fails a test rather than in
+// production. main() stays one statement: parse, wire, hand off, exit.
+//
+// Logging is configured before anything can fail, so every later failure is
+// reported by the logger this function just built, never by a default handler
+// that was never chosen.
+func realMain(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	level, err := parseLogLevel(os.Getenv("KROOT_LOG_LEVEL"))
+	slog.SetDefault(newLogger(stderr, isTerminal(stderr), level))
+
+	if err != nil {
 		slog.Error("kroot failed", "err", err)
-		os.Exit(exitCodeFor(err))
+		return exitCodeFor(err)
 	}
+	if err := run(ctx, args, stdout, stderr); err != nil {
+		slog.Error("kroot failed", "err", err)
+		return exitCodeFor(err)
+	}
+	return exitSuccess
 }
 
 // exitCodeFor maps an error from run to the exit code the contract promises. A
@@ -66,6 +89,80 @@ func exitCodeFor(err error) int {
 	}
 }
 
+// allowedLogLevels is the full accepted vocabulary for KROOT_LOG_LEVEL, in the
+// order the manual and the error message present it. A single definition means
+// neither can drift from the parser.
+var allowedLogLevels = []string{"debug", "info", "warn", "error"}
+
+// parseLogLevel maps KROOT_LOG_LEVEL to a slog level. Empty means unset and
+// selects the documented default (info). An unknown value is rejected rather
+// than coerced, so a typo fails loudly with the accepted values named.
+//
+// The failure returns LevelError, not LevelInfo: no configured level may
+// suppress the record that explains why the configuration was rejected.
+func parseLogLevel(v string) (slog.Level, error) {
+	switch v {
+	case "":
+		return slog.LevelInfo, nil
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		// "configuration rejected" is the wording api-compatibility.md ties to
+		// exit code 1, so the diagnostic and the contract use one phrase.
+		return slog.LevelError, fmt.Errorf(
+			"configuration rejected: KROOT_LOG_LEVEL %q: want one of %s",
+			v, strings.Join(allowedLogLevels, "|"),
+		)
+	}
+}
+
+// newLogger builds the process logger. Terminals get human-readable text; any
+// other destination gets JSON, which stays machine-readable when piped. The
+// structured keys are identical either way — only the encoding differs, and the
+// encoding is not part of the compatibility contract.
+func newLogger(out io.Writer, tty bool, level slog.Level) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: level}
+	if tty {
+		return slog.New(slog.NewTextHandler(out, opts))
+	}
+	return slog.New(slog.NewJSONHandler(out, opts))
+}
+
+// statser is the subset of *os.File that isTerminal needs. Taking the
+// interface rather than *os.File keeps isTerminal testable with an in-memory
+// writer and lets a closed or unstatable descriptor be handled instead of
+// panicking.
+type statser interface {
+	Stat() (fs.FileInfo, error)
+}
+
+// isTerminal reports whether w is a terminal. Terminals are character devices;
+// pipes, files and other redirections are not. It reports false when w cannot
+// describe itself, because the safe answer for an unknown destination is the
+// machine-readable one.
+//
+// The test is deliberately ModeCharDevice rather than a pty probe: /dev/null is
+// a character device and therefore answers true, which is the one known
+// misclassification. Its consequence is only log encoding into a destination
+// that discards everything it receives, so nothing can be harmed by it.
+func isTerminal(w io.Writer) bool {
+	s, ok := w.(statser)
+	if !ok {
+		return false
+	}
+	fi, err := s.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
 // run executes the kroot CLI and returns the first fatal error.
 //
 // stdout carries what the caller asked for — help text on request, the version
@@ -73,7 +170,13 @@ func exitCodeFor(err error) int {
 // receive usage text produced by a failure, and a caller that discards stdout
 // must still be able to tell what went wrong. See
 // docs/enterprise/api-compatibility.md § "Streams".
-func run(args []string, stdout, stderr io.Writer) error {
+func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	// A cancelled context means shutdown is already underway: fail fast instead
+	// of doing work nobody will observe. Long-running commands must additionally
+	// select on ctx while they run.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("run cancelled: %w", err)
+	}
 	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
 
 	// flag calls fs.Usage in two situations: an explicit -h, which is a success

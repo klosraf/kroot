@@ -9,6 +9,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `KROOT_LOG_LEVEL` — the first `KROOT_*` configuration variable, with `info` as
+  its default: `debug`, `info`, `warn`, `error`. An unknown value is rejected
+  rather than coerced, reported as `configuration rejected` with the accepted
+  vocabulary on stderr, and exits `1` (the wording and the code that
+  `api-compatibility.md` ties to a rejected configuration). The log destination
+  picks the encoding — human-readable text on a terminal, JSON when stderr is
+  redirected or piped — with identical structured keys either way, and no color
+  codes are emitted, so `NO_COLOR` has nothing to disable. Documented in
+  `docs/enterprise/observability.md` and the README's Configuration section.
+- Project type decided as a terminal-first CLI application in
+  `docs/adr/0003-cli-first-terminal-application.md`, with `context.Context`
+  threaded from `main` to `run` so the first command that can block inherits a
+  cancellation path instead of inventing one. `realMain` extracted from `main`
+  so the wiring — configuration rejection included — is tested without
+  spawning a process.
 - `kroot version` reports the Go toolchain that built the binary, so the compiler
   is visible beside the revision it produced:
   `kroot dev (commit none, built unknown, go1.23.12)`.
@@ -162,8 +177,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Notes
 
-- The project type (CLI / service / full-stack application) is not finalised;
-  the module favours the Go standard library until an ADR says otherwise.
+- The project type is now decided: a terminal-first CLI application
+  (`docs/adr/0003-cli-first-terminal-application.md`). The HTTP and persistence
+  layers remain open and each still needs its own ADR; the module favours the Go
+  standard library until one says otherwise.
 - No public API, CLI flag or environment variable is guaranteed stable before
   the first `v0.1.0` tag. The compatibility guarantees documented in
   `docs/enterprise/api-compatibility.md` take effect at `v1.0.0`.
