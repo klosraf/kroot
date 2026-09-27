@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -404,6 +405,45 @@ func TestRunFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	}
 }
 
+// The count and the ErrUsage wrapping are asserted alongside the recovery, so a
+// fix that softens the message cannot quietly drop the contract.
+func TestArityFailuresNameTheCorrectForm(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "help", args: []string{"help", "a", "b"}, want: `see "kroot help <command>"`},
+		{name: "man", args: []string{"man", "a", "b"}, want: `see "kroot man <command>"`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+
+			err := run(context.Background(), tc.args, &stdout, io.Discard)
+			if err == nil {
+				t.Fatalf("run(%v) = nil; want a usage error", tc.args)
+			}
+			if !errors.Is(err, cli.ErrUsage) {
+				t.Errorf("run(%v) error = %v; want it to match ErrUsage", tc.args, err)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("run(%v) error = %q; want it to name the next step %s", tc.args, err, tc.want)
+			}
+			if !strings.Contains(err.Error(), "got 2") {
+				t.Errorf("run(%v) error = %q; want it to keep the count of what arrived", tc.args, err)
+			}
+			// A caller that redirects stdout must not capture usage text from a
+			// failure: the help it would have received is the answer, but a
+			// diagnostic on stdout is a broken pipe for anything downstream.
+			if got := stdout.String(); got != "" {
+				t.Errorf("run(%v) wrote %q to stdout; want nothing on the failure path", tc.args, got)
+			}
+		})
+	}
+}
+
 // TestCompletionScriptReachesStdoutAndNothingElse covers the stream half of the
 // contract for the generated script. The script is what the caller asked for, so
 // it belongs on stdout and stderr must stay empty — otherwise a caller
@@ -522,6 +562,35 @@ func TestNoSurfaceEmitsAnEscapeSequence(t *testing.T) {
 			}
 			start, end := max(0, i-40), min(len(got), i+40)
 			t.Errorf("%s emitted an escape byte at offset %d: …%q…", tc.name, i, got[start:end])
+		})
+	}
+}
+
+// A tab in human-facing output is not a style preference. It re-expands against
+// whatever tab-stop the reader's terminal happens to use, it survives
+// reindentation, and it makes a byte-exact assertion impossible. It reached the
+// help screen because the Flags block was rendered by the standard library's
+// PrintDefaults while the Commands block above it was rendered by kroot — two
+// typographic rules inside one screen. Asserting the absence of the byte is what
+// stops the next third-party renderer from reintroducing it.
+func TestNoSurfaceEmitsATab(t *testing.T) {
+	for _, tc := range allSurfaceCases(t) {
+		if strings.HasPrefix(tc.name, "completion ") {
+			// Shell scripts are code a shell parses, not prose read at a
+			// terminal. A tab inside one is a shell's business, and rewriting
+			// a generated script to satisfy a human-facing rule would break the
+			// syntax that rule is protecting.
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderSurface(t, tc.args)
+
+			i := strings.IndexByte(got, '\t')
+			if i < 0 {
+				return
+			}
+			start, end := max(0, i-40), min(len(got), i+40)
+			t.Errorf("%s emitted a tab at offset %d: …%q…", tc.name, i, got[start:end])
 		})
 	}
 }
@@ -893,6 +962,132 @@ func TestRealMainFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	}
 	if got := stdout.String(); got != "" {
 		t.Errorf("stdout = %q; want it empty: nothing ran", got)
+	}
+}
+
+// Both classes are asserted, not only the one that changed: a test that only
+// pins the usage path would still pass if a runtime failure were demoted to WARN
+// by the next person to touch the switch.
+func TestUsageErrorIsNotLoggedAsAProgramFailure(t *testing.T) {
+	keepDefaultLogger(t)
+
+	tests := []struct {
+		name string
+		// level is the KROOT_LOG_LEVEL the run starts from. It differs per case
+		// because the configuration failure below is only reachable with an
+		// invalid value, which would stop the usage-error case before it ran.
+		level     string
+		args      []string
+		wantLevel string
+		wantMsg   string
+		wantInErr string
+	}{
+		{
+			name:      "a caller's typo is a warning about their invocation",
+			args:      []string{"bogus"},
+			wantLevel: "WARN",
+			wantMsg:   "kroot: usage error",
+			wantInErr: `see "kroot help"`,
+		},
+		{
+			name:      "rejected configuration stays the program's failure",
+			level:     "verbose",
+			args:      []string{"version"},
+			wantLevel: "ERROR",
+			wantMsg:   "kroot failed",
+			wantInErr: "configuration rejected",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("KROOT_LOG_LEVEL", tc.level)
+
+			var stdout, stderr bytes.Buffer
+
+			realMain(context.Background(), tc.args, &stdout, &stderr)
+			got := stderr.String()
+
+			if !strings.Contains(got, tc.wantLevel) {
+				t.Errorf("stderr = %q; want level %s", got, tc.wantLevel)
+			}
+			if !strings.Contains(got, tc.wantMsg) {
+				t.Errorf("stderr = %q; want the message %q", got, tc.wantMsg)
+			}
+			// The recovery is the part written for a person, so it must survive
+			// in the record rather than being dropped by a reworded headline.
+			//
+			// stderr is not a terminal here, so the record is JSON and its quotes
+			// are escaped. The assertion is made against the decoded record
+			// rather than against the raw bytes, because asserting on escaped
+			// output would pin the encoder's escaping rather than the message.
+			var record map[string]any
+			if err := json.Unmarshal(stderr.Bytes(), &record); err != nil {
+				t.Fatalf("stderr is not a JSON record: %v\n%s", err, got)
+			}
+			if msg, _ := record["err"].(string); !strings.Contains(msg, tc.wantInErr) {
+				t.Errorf("record err = %q; want it to contain %q", msg, tc.wantInErr)
+			}
+		})
+	}
+}
+
+// TestWarnSilencesAUsageErrorButNotAProgramFailure is the reason the level was
+// worth deciding. With KROOT_LOG_LEVEL=warn a caller can raise the floor to hide
+// their own typos, and real failures still get through — a level that cannot
+// separate the two is a level that filters nothing.
+func TestWarnSilencesAUsageErrorButNotAProgramFailure(t *testing.T) {
+	keepDefaultLogger(t)
+
+	t.Setenv("KROOT_LOG_LEVEL", "error")
+	var stdout, stderr bytes.Buffer
+	realMain(context.Background(), []string{"bogus"}, &stdout, &stderr)
+	if got := stderr.String(); got != "" {
+		t.Errorf("stderr = %q; want a usage error silenced at KROOT_LOG_LEVEL=error", got)
+	}
+
+	t.Setenv("KROOT_LOG_LEVEL", "verbose")
+	stdout.Reset()
+	stderr.Reset()
+	realMain(context.Background(), []string{"version"}, &stdout, &stderr)
+	if got := stderr.String(); !strings.Contains(got, "configuration rejected") {
+		t.Errorf("stderr = %q; want a configuration rejection at ERROR even under a warn floor", got)
+	}
+}
+
+// TestDiagnosticSurvivesRedirection asserts the change did not cost a machine
+// consumer anything. api-compatibility.md fixes the record's keys, so a redirect
+// must still receive parseable JSON carrying the same keys and the whole message
+// — the level moved, the shape did not.
+func TestDiagnosticSurvivesRedirection(t *testing.T) {
+	t.Setenv("KROOT_LOG_LEVEL", "")
+	keepDefaultLogger(t)
+
+	var stdout, stderr bytes.Buffer
+
+	// stderr is a bytes.Buffer, which is not a character device, so this is the
+	// redirected path a script and a CI job actually get.
+	if got := realMain(context.Background(), []string{"bogus"}, &stdout, &stderr); got != exitUsage {
+		t.Fatalf("realMain(bogus) = %d; want %d", got, exitUsage)
+	}
+
+	var record map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &record); err != nil {
+		t.Fatalf("stderr is not JSON on a redirect: %v\n%s", err, stderr.String())
+	}
+	for _, key := range []string{"time", "level", "msg", "err"} {
+		if _, ok := record[key]; !ok {
+			t.Errorf("record %v is missing the key %q; the key set is the stable interface", record, key)
+		}
+	}
+	if got := record["level"]; got != "WARN" {
+		t.Errorf("record level = %v; want WARN", got)
+	}
+	if msg, _ := record["err"].(string); !strings.Contains(msg, `see "kroot help"`) {
+		t.Errorf("record err = %q; want the whole message, recovery included", msg)
+	}
+	if got := stdout.String(); got != "" {
+		t.Errorf("stdout = %q; want it empty: a diagnostic never belongs on stdout", got)
 	}
 }
 

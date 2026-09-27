@@ -23,6 +23,7 @@ standards that govern *how* those decisions are made are not — see
 | [`docs/enterprise/`](./docs/enterprise/) | Branching, versioning, release, security, observability, API compatibility |
 | [`docs/adr/`](./docs/adr/) | Why things are the way they are |
 | [`docs/prompts/ux-elevation-prompt.md`](./docs/prompts/ux-elevation-prompt.md) | The integrated experience prompt: diagnosis, UI/UX standard, both workstreams, verification |
+| [`docs/prompts/ui-ux-elevation-prompt.md`](./docs/prompts/ui-ux-elevation-prompt.md) | The UI/UX elevation standard: open findings against the code, the workstreams and the evidence each item owes |
 | [`SECURITY.md`](./SECURITY.md) | Reporting a vulnerability (privately) |
 | [`CHANGELOG.md`](./CHANGELOG.md) | What changed, per release |
 
@@ -72,8 +73,27 @@ kroot dev (commit none, built unknown, go1.23.12)
 
 $ kroot help
 kroot - application skeleton
-...
+
+Usage:
+  kroot [flags] <command>
+
+Commands:
+  completion  print a shell completion script
+  help        print this help, or the help of one command
+  man         print the manual page for kroot, or for one command
+  version     print the version and exit
+
+Flags:
+  -version  print the version and exit
+
+Run "kroot help <command>" for detail on one command.
+Run "man kroot" for the full manual, including exit codes and environment.
 ```
+
+The first screen is the whole orientation: what the program is, what it offers,
+what flags it takes, and where to go next. Every rejection names a next step too —
+`kroot help a b` answers `see "kroot help <command>"` rather than only counting
+what arrived.
 
 Version, commit and build time are injected at link time by `make build` and are
 `dev` / `none` / `unknown` for a plain `go run .`. The Go toolchain is not
@@ -241,4 +261,3 @@ The full rules are in [`AGENTS.md`](./AGENTS.md) and
 ## Licence
 
 [MIT](./LICENSE) © 2026 Carlos Tamayo Ponce.
-

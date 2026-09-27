@@ -63,15 +63,40 @@ func realMain(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	slog.SetDefault(newLogger(stderr, isTerminal(stderr), level))
 
 	if err != nil {
-		slog.Error("kroot failed", "err", err)
+		reportFailure(err)
 		return exitCodeFor(err)
 	}
 	if err := run(ctx, args, stdout, stderr); err != nil {
-		slog.Error("kroot failed", "err", err)
+		reportFailure(err)
 		return exitCodeFor(err)
 	}
 	return exitSuccess
 }
+
+// reportFailure logs err at the level its cause implies, and names the class of
+// failure rather than asserting the program broke.
+//
+// A usage error is something the caller typed, so reporting it as the program's
+// failure misattributed it, and reporting it at ERROR made the level meaningless:
+// KROOT_LOG_LEVEL=warn could not silence a typo, and `error` described nearly
+// every diagnostic the binary emits. The level now follows the same split the
+// exit code already used, so the two cannot disagree.
+//
+// The err attribute keeps the whole sentence, so a structured consumer loses
+// nothing; only the level and the headline move. See
+// docs/adr/0005-severity-of-a-caller-caused-failure.md.
+func reportFailure(err error) {
+	if isUsageError(err) {
+		slog.Warn("kroot: usage error", "err", err)
+		return
+	}
+	slog.Error("kroot failed", "err", err)
+}
+
+// isUsageError reports whether err was caused by how the program was invoked
+// rather than by what it was asked to do — the same question exitCodeFor answers,
+// asked once so the log level and the exit code are decided by the same fact.
+func isUsageError(err error) bool { return errors.Is(err, cli.ErrUsage) }
 
 // exitCodeFor maps an error from run to the exit code the contract promises. A
 // failure the caller can fix by reinvoking is a usage error; everything else is a
@@ -80,7 +105,7 @@ func exitCodeFor(err error) int {
 	switch {
 	case err == nil:
 		return exitSuccess
-	case errors.Is(err, cli.ErrUsage):
+	case isUsageError(err):
 		return exitUsage
 	default:
 		return exitFailure
@@ -366,7 +391,14 @@ func runHelp(program *cli.Program, env cli.Env) error {
 		// Rejecting rather than ignoring: silently dropping the extra operand
 		// would hide a real mistake, and api-compatibility.md ties a bad
 		// argument to exit 2.
-		return fmt.Errorf("%w: help takes at most one command name, got %d", cli.ErrUsage, len(env.Args))
+		//
+		// The message names the correct form, because a rejection that only says
+		// what was wrong leaves the caller with nothing to try. Every other
+		// failure on this path already ends in a next step — a near miss, the
+		// command list, the command's own help — and arity was the one that did
+		// not, which made it the only failure here a reader could not act on.
+		return fmt.Errorf("%w: help takes at most one command name, got %d: see %q",
+			cli.ErrUsage, len(env.Args), program.Name+" help <command>")
 	}
 
 	command, ok := program.Commands.Lookup(env.Args[0])
@@ -387,10 +419,12 @@ func runHelp(program *cli.Program, env cli.Env) error {
 //
 // More than one operand is rejected rather than ignored, matching help: a
 // silently dropped argument hides a real mistake, and api-compatibility.md ties a
-// bad argument to exit code 2.
+// bad argument to exit code 2. The rejection names the correct form, for the same
+// reason help's does.
 func runMan(program *cli.Program, env cli.Env) error {
 	if len(env.Args) > 1 {
-		return fmt.Errorf("%w: man takes at most one command name, got %d", cli.ErrUsage, len(env.Args))
+		return fmt.Errorf("%w: man takes at most one command name, got %d: see %q",
+			cli.ErrUsage, len(env.Args), program.Name+" man <command>")
 	}
 
 	name := ""
