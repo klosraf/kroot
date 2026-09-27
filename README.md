@@ -117,5 +117,5 @@ The full rules are in [`AGENTS.md`](./AGENTS.md) and
 
 ## Licence
 
-<!-- TODO: choose and add a LICENSE file before the first public release. -->
+[MIT](./LICENSE) © 2026 Carlos Tamayo Ponce.
 
