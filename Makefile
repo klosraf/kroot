@@ -2,7 +2,12 @@ BINARY   := kroot
 BIN_DIR  := bin
 GO       := go
 
-VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# The tag's leading "v" is stripped, so main.version carries the SemVer value
+# ("0.1.0") rather than the tag name ("v0.1.0"). docs/enterprise/versioning-policy.md
+# documents `kroot version` printing the former, and a release binary that
+# contradicted its own versioning policy would be a drift of exactly the kind
+# that document exists to prevent.
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' | grep . || echo dev)
 COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 BUILT_AT ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildTime=$(BUILT_AT)
