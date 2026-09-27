@@ -49,6 +49,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The `commits` CI job no longer runs for Dependabot and Renovate pull requests,
   whose generated sentence-case subjects would fail the `subject-case` rule by
   construction.
+- `SECURITY.md` directed reporters to GitHub private vulnerability reporting,
+  which GitHub does not provide on a private repository (the API returns 404
+  without GitHub Advanced Security). Email is now the documented channel, with
+  the GitHub flow described as the channel to enable if the repository becomes
+  public.
+- The `commits` job used a job-level `if`, so on a push it reported as skipped.
+  A skipped job leaves its required status check expected forever and blocks
+  every pull request once branch protection is enabled. The job now always runs
+  and reports success on the paths where linting does not apply.
 
 ### Notes
 

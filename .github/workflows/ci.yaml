@@ -117,36 +117,56 @@ jobs:
   # ---------------------------------------------------------------------------
   # Commit message convention (Conventional Commits with a scope).
   #
-  # Bots are excluded: Dependabot generates sentence-case subjects ("Bump x from
-  # 1 to 2") that the subject-case rule rejects by design, so gating them would
-  # only produce permanently red PRs. Their change is reviewed on its merits.
+  # This job always runs, and always reports success on the paths where linting
+  # does not apply. That is deliberate: a job skipped by a job-level `if` leaves
+  # its required status check expected forever, which blocks every pull request.
+  # Reporting green from a no-op keeps the check usable as a required gate.
+  #
+  # Linting is skipped for:
+  #   - events other than pull_request, where there is no base..head range;
+  #   - Dependabot and Renovate, whose generated sentence-case subjects
+  #     ("Bump x from 1 to 2") the subject-case rule rejects by construction.
   # ---------------------------------------------------------------------------
   commits:
     name: commit messages
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.actor != 'dependabot[bot]' &&
-      github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Decide whether commit linting applies
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "applies=false" >> "$GITHUB_OUTPUT"
+            echo "Not a pull request: there is no base..head range to lint."
+          elif [ "${{ github.actor }}" = "dependabot[bot]" ] || [ "${{ github.actor }}" = "renovate[bot]" ]; then
+            echo "applies=false" >> "$GITHUB_OUTPUT"
+            echo "Dependency bot: the commit message is generated, not authored."
+          else
+            echo "applies=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.scope.outputs.applies == 'true'
         with:
           # commitlint needs both endpoints of the range.
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
+        if: steps.scope.outputs.applies == 'true'
         with:
           version: 9
 
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.applies == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Install tooling
+        if: steps.scope.outputs.applies == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Lint commit messages
+        if: steps.scope.outputs.applies == 'true'
         run: |
           pnpm exec commitlint \
             --from "${{ github.event.pull_request.base.sha }}" \
