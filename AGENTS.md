@@ -9,7 +9,7 @@ local habit disagree, **the charter wins**. Deviations require an ADR in
 
 Kroot is a **full-stack product**:
 
-- **Backend** — Go 1.23.x, this module (`github.com/kroot/kroot`).
+- **Backend** — Go 1.23.x, this module (`github.com/klosraf/kroot`).
 - **Frontend** — TypeScript + React, added under `web/` when the first UI
   milestone lands.
 
@@ -38,7 +38,7 @@ Rules:
 
 ## 2. Naming
 
-- Binary `kroot` · module `github.com/kroot/kroot` · env `KROOT_*` · data dir
+- Binary `kroot` · module `github.com/klosraf/kroot` · env `KROOT_*` · data dir
   `~/.kroot`.
 - Branch names, commit types and PR titles follow
   [`docs/enterprise/branching-strategy.md`](./docs/enterprise/branching-strategy.md).

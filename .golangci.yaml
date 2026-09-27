@@ -40,7 +40,7 @@ linters:
             - $all
             - "!$test"
           deny:
-            - pkg: github.com/kroot/kroot/internal/testutil
+            - pkg: github.com/klosraf/kroot/internal/testutil
               desc: test helpers may only be imported from _test.go files
     govet:
       disable:

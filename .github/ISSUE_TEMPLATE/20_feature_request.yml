@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Per [CONTRIBUTING.md](https://github.com/kroot/kroot/blob/main/CONTRIBUTING.md),
+        Per [CONTRIBUTING.md](https://github.com/klosraf/kroot/blob/main/CONTRIBUTING.md),
         non-trivial changes are discussed in an issue before any code is written.
         Describe the **problem**, not just the solution you have in mind.
 

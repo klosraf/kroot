@@ -9,7 +9,7 @@ body:
         Thanks for taking the time to report a bug.
 
         **Security issues must not be reported here.** Follow
-        [SECURITY.md](https://github.com/kroot/kroot/blob/main/SECURITY.md) instead.
+        [SECURITY.md](https://github.com/klosraf/kroot/blob/main/SECURITY.md) instead.
 
   - type: input
     id: version
