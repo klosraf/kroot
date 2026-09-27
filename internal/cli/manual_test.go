@@ -268,9 +268,7 @@ func TestQuoteRoffProtectsMacroArguments(t *testing.T) {
 // can only show that the text looks escaped; only the formatter can show that
 // the page still means what it said.
 func TestManualSurvivesHostileText(t *testing.T) {
-	if _, err := exec.LookPath("mandoc"); err != nil {
-		t.Skipf("mandoc is not installed: %v", err)
-	}
+	requireTool(t, "mandoc")
 
 	hostile := "it's a 'trap'; $(id) \\ `x` \"double\" -dash\n.SH INJECTED\n\ttabbed .dot"
 
@@ -324,9 +322,7 @@ func TestManualSurvivesHostileText(t *testing.T) {
 // mandoc is not present on every machine, so the test skips visibly instead of
 // assuming — the structural tests above run regardless.
 func TestGeneratedPagesPassARealRoffLinter(t *testing.T) {
-	if _, err := exec.LookPath("mandoc"); err != nil {
-		t.Skipf("mandoc is not installed: %v", err)
-	}
+	requireTool(t, "mandoc")
 
 	p := manualProgram(t)
 	info := testInfo()
@@ -371,9 +367,7 @@ func TestGeneratedPagesPassARealRoffLinter(t *testing.T) {
 // perfectly good-looking date that no formatter can parse, which is a defect
 // visible only here.
 func TestProgramPageIsUnderstoodByARealRoffFormatter(t *testing.T) {
-	if _, err := exec.LookPath("mandoc"); err != nil {
-		t.Skipf("mandoc is not installed: %v", err)
-	}
+	requireTool(t, "mandoc")
 
 	page := renderManual(t, manualProgram(t), "", testInfo())
 	tree, err := runMandoc(t, "-T", "tree", writePage(t, page))

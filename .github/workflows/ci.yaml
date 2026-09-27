@@ -28,6 +28,18 @@ env:
   # this module is pinned to Go 1.23.12, so the scanner is the newest buildable release.
   GOVULN_VERSION: v1.1.4
   NODE_VERSION: "22"
+  # Makes the shell-dependent tests fail rather than skip when their tool is
+  # missing. internal/cli validates the generated completion scripts and manual
+  # pages by handing them to bash, zsh and mandoc; those tests skip when a tool is
+  # absent, which is right on a developer machine and wrong in CI, because a skip
+  # is indistinguishable from a pass in a required status check. The `test` job
+  # installs mandoc, so the roff validation cannot quietly stop running.
+  # See requireTool in internal/cli/shelltools_test.go.
+  #
+  # The name must match requireShellToolsEnv in that file exactly; the two are
+  # asserted against each other by TestRequireShellToolsEnvNameIsWired, because a
+  # mismatch here would silently restore the skip it exists to prevent.
+  KROOT_REQUIRE_SHELL_TOOLS: "1"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -64,6 +76,21 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      # mandoc is the formatter macOS's own man uses, and it is what validates the
+      # generated manual pages. It is not installed on ubuntu-latest by default, so
+      # without this the roff lint and parse-tree tests would skip on every pull
+      # request while the check list still reported them as covered.
+      #
+      # The package is pinned to the version Ubuntu ships rather than "latest", so
+      # a formatter change cannot turn a passing page into a failing one, or the
+      # reverse, without a visible change to this file.
+      - name: Install mandoc
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends mandoc
+          mandoc -V
 
       - name: Key build files are under version control
         run: |

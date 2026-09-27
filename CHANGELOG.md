@@ -9,6 +9,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The validation of kroot's own generated output did not run in CI.
+  `internal/cli` proves the completion scripts and manual pages by handing them to
+  the tools that will consume them — `bash -n`, `zsh -n`, and `mandoc -T lint`
+  plus a parse-tree read-back — but each of those tests **skipped** when its tool
+  was absent, and `mandoc` is not installed on `ubuntu-latest` by default. A skip
+  is indistinguishable from a pass in a required status check, so the suite
+  reported success while the roff and shell validation covered nothing on every
+  pull request. Two changes close it. The `test` job installs `mandoc` on Linux,
+  pinned to the version Ubuntu ships so a formatter change cannot silently flip a
+  result. And `requireTool` now reads `KROOT_REQUIRE_SHELL_TOOLS`, which the
+  workflow sets: a developer machine still skips, because `mandoc` is installed
+  nowhere by default and failing would make `go test ./...` fail for a reason
+  unrelated to the code, while CI fails loudly if a tool goes missing. Because the
+  workflow and the test are a literal in a YAML file and a literal in a Go file
+  with nothing connecting them, `TestRequireShellToolsEnvNameIsWired` reads the
+  workflow and compares the names — this mismatch happened while writing the
+  change, and without the test it would have restored the skip silently.
+
 - `SECURITY.md` described a repository that is not this one, in three places. It
   stated the reporting channel was constrained because the repository is private
   — it is **public**, and GitHub's private vulnerability reporting is available
