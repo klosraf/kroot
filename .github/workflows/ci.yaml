@@ -116,10 +116,17 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Commit message convention (Conventional Commits with a scope).
+  #
+  # Bots are excluded: Dependabot generates sentence-case subjects ("Bump x from
+  # 1 to 2") that the subject-case rule rejects by design, so gating them would
+  # only produce permanently red PRs. Their change is reviewed on its merits.
   # ---------------------------------------------------------------------------
   commits:
     name: commit messages
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
