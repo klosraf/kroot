@@ -9,6 +9,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Command framework under `internal/cli`: `Registry`, typed `Command` and `Env`,
+  subcommand routing, single-command help via `kroot help <cmd>`, aligned
+  command listings, and closest-match suggestions (`did you mean ...?`) using
+  bounded Levenshtein distance on runes.
 - `KROOT_LOG_LEVEL` — the first `KROOT_*` configuration variable, with `info` as
   its default: `debug`, `info`, `warn`, `error`. An unknown value is rejected
   rather than coerced, reported as `configuration rejected` with the accepted
@@ -78,6 +82,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Global flags were not listed under the `Flags:` section in `kroot help`.
+  Because `flag.FlagSet` was directed to `io.Discard` to suppress standard error
+  chatter, `fs.PrintDefaults()` wrote to discard instead of the help output
+  stream. `cli.PrintFlags` now redirects `fs` output to the target writer
+  temporarily and restores the previous output via `defer`.
 - The repository sent vulnerability reporters to a channel that does not exist.
   `SECURITY.md` had already been corrected to name the maintainer's email,
   because GitHub does not offer private vulnerability reporting for a private
