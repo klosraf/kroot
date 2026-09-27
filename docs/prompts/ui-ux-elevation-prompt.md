@@ -664,6 +664,36 @@ zsh -f -c 'fpath=($1 $fpath)
            print -r -- "registered=${_comps[kroot]}"' zsh-probe "$d"
 
 # bash: syntax first, then the behaviour a caller actually gets
+kroot completion bash > "$d/kroot.bash" && bash -n "$d/kroot.bash"
+bash --noprofile --norc -c '
+  source "$1"
+  COMP_WORDS=(kroot ""); COMP_CWORD=1
+  _kroot_completions
+  printf "%s\n" "${COMPREPLY[@]}"' bash-probe "$d/kroot.bash"
+
+# fish: not installed everywhere — skip visibly, or fail in CI
+kroot completion fish > "$d/kroot.fish" && fish -n "$d/kroot.fish"
+
+# manual: lint, then read the parse tree rather than the rendered overstrike.
+# `command -v` first, so a missing tool is *No executed* and a failing lint is
+# *Fallido* — never conflated, which is how a red build hides behind a green skip.
+#
+# A `go build` with no `-ldflags` carries the page date "unknown", and mandoc
+# warns on it (exit 2). That is the dev-build shape, not a defect: lint a build
+# with metadata injected and it is silent. Verified 2026-09-27 on both.
+command -v mandoc >/dev/null \
+  && { kroot man > "$d/kroot.1" && mandoc -T lint "$d/kroot.1"; echo "lint exit=$?"; } \
+  || echo 'mandoc absent -> No executed'
+kroot man | man -l -
+
+# streams and exit codes, on the success path and the failure path
+kroot version > "$d/out" 2> "$d/err"; echo "code=$? stdout=$(wc -c < "$d/out")"
+kroot version extra > "$d/out" 2> "$d/err"; echo "code=$? stdout=$(wc -c < "$d/out")"
+```
+
+The last pair catches the most: a failure that writes to stdout, or a success that
+writes to stderr, breaks every caller that redirects.
+
 ### 7.5 Review checklist
 
 A reviewer answers in order. A "no" is a request for a change, not a preference.
@@ -708,7 +738,17 @@ A reviewer answers in order. A "no" is a request for a change, not a preference.
   cannot show that help, the manual or a script is right.
 - **Unbounded suggestions.** A list of guesses is worse than none: the reader then
   has to choose between them.
----
+- **A heading added for symmetry.** A section with nothing under it promises content
+  and delivers a heading.
+- **Behaviour changed as "polish."** Anything a caller can observe is classified;
+  stable items are decided, not tidied.
+- **A hard-coded width, name or exit code** that already has a source of truth
+  elsewhere — including a second description of a flag.
+- **Colour added for emphasis.** Styled output is an ADR with a `NO_COLOR` story,
+  not a one-line change.
+- **Snapshots standing in for behaviour.** They approve regressions as often as they
+  catch them.
+- **A silent skip.** If a required tool is missing in CI, the build fails.
 
 ## 8. Definition of done
 
@@ -767,45 +807,8 @@ the pull request says so:
 3. Experience work has **one standard and one register**: the standard here, the
    register in `ux-elevation-prompt.md` §8. A finding or criterion must not appear in
    both, because two copies of a fact are the defect §4.1 #1 exists to prevent.
-
-- **A heading added for symmetry.** A section with nothing under it promises content
-  and delivers a heading.
-- **Behaviour changed as "polish."** Anything a caller can observe is classified;
-  stable items are decided, not tidied.
-- **A hard-coded width, name or exit code** that already has a source of truth
-  elsewhere — including a second description of a flag.
-- **Colour added for emphasis.** Styled output is an ADR with a `NO_COLOR` story,
-  not a one-line change.
-- **Snapshots standing in for behaviour.** They approve regressions as often as they
-  catch them.
-- **A silent skip.** If a required tool is missing in CI, the build fails.
-
-kroot completion bash > "$d/kroot.bash" && bash -n "$d/kroot.bash"
-bash --noprofile --norc -c '
-  source "$1"
-  COMP_WORDS=(kroot ""); COMP_CWORD=1
-  _kroot_completions
-  printf "%s\n" "${COMPREPLY[@]}"' bash-probe "$d/kroot.bash"
-
-# fish: not installed everywhere — skip visibly, or fail in CI
-kroot completion fish > "$d/kroot.fish" && fish -n "$d/kroot.fish"
-
-# manual: lint, then read the parse tree rather than the rendered overstrike.
-# `command -v` first, so a missing tool is *No ejecutado* and a failing lint is
-# *Fallido* — never conflated, which is how a red build hides behind a green skip.
-#
-# A `go build` with no `-ldflags` carries the page date "unknown", and mandoc
-# warns on it (exit 2). That is the dev-build shape, not a defect: lint a build
-# with metadata injected and it is silent. Verified 2026-09-27 on both.
-command -v mandoc >/dev/null \
-  && { kroot man > "$d/kroot.1" && mandoc -T lint "$d/kroot.1"; echo "lint exit=$?"; } \
-  || echo 'mandoc absent -> No ejecutado'
-kroot man | man -l -
-
-# streams and exit codes, on the success path and the failure path
-kroot version > "$d/out" 2> "$d/err"; echo "code=$? stdout=$(wc -c < "$d/out")"
-kroot version extra > "$d/out" 2> "$d/err"; echo "code=$? stdout=$(wc -c < "$d/out")"
-```
-
-The last pair catches the most: a failure that writes to stdout, or a success that
-writes to stderr, breaks every caller that redirects.
+4. A claim of completeness is scoped to what the document actually checked.
+   "Every finding is resolved" was true of the first pass and wrong of the
+   repository, because the second pass found four more by reading whole screens
+   instead of blocks. A document that says "nothing is open" must say *open
+   where*, or a later reader inherits a guarantee nobody re-measured.

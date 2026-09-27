@@ -1,10 +1,15 @@
 # Kroot — Integrated Experience Prompt
 
-One file, one structure. Everything needed to raise this product's experience to a
-mature, production-ready standard — the diagnosis, the standard, the workstreams,
-the verification rules and the register of what this pass resolved — integrated
+One file, one structure. The diagnosis, the standard, the workstreams, the
+verification rules and the register of what the first pass resolved — integrated
 with the documentation this repository already has. Nothing here is a rewrite of
 the charter; §2 distills it and §9 maps every source so no rule has two homes.
+
+A **second pass** found four more, by reading whole screens rather than blocks:
+UX-15 to UX-18, in
+[`ui-ux-elevation-prompt.md`](./ui-ux-elevation-prompt.md). That document carries
+the findings and the standard they were measured against; this one remains the
+register of what this pass resolved. §5.2 says which is which.
 
 ## 0. How to use this document
 
@@ -208,9 +213,17 @@ script.
 |---|---|---|
 | UX-13 | No colour, no progress output, no pager, no TUI | **Deliberate.** ADR-0003 and `observability.md` both reject styled output until a consumer exists. The first interactive or long-running command is that consumer, and it brings `NO_COLOR` with it |
 
-Every finding in this section is now resolved or deliberate. The list stays because
-a new command or a new shell reopens it: a command that accepts a file operand is
-the one change that would justify reconsidering a declined position.
+Every finding **in this section** is resolved or deliberate — but that claim was
+scoped to this document, and reading the whole screen against the standard rather
+than each block on its own terms later produced four more: UX-15 through UX-18,
+in [`ui-ux-elevation-prompt.md`](./ui-ux-elevation-prompt.md) §3.1. They share one
+cause, which this pass did not look for: the standard was written per surface and
+nothing compared surfaces against each other, so a defect could only exist
+*between* two blocks that were each individually correct.
+
+The list stays because a new command or a new shell reopens it: a command that
+accepts a file operand is the one change that would justify reconsidering a
+declined position.
 
 ### Deliberate, and therefore not defects
 
@@ -448,9 +461,18 @@ are demonstrated with an artefact. Each is marked by the state in which §3 left
 
 ### 5.2 Open items
 
-None. Every item in §3 is resolved or deliberate, and every item in §5.1 is verified
-in §8. The workstream stays open for the changes that would reopen it: a command
-that accepts a file operand, a second operand position, or a shell whose vocabulary
+None **of this workstream's own items**. Every one in §3 is resolved or deliberate,
+and every one in §5.1 is verified in §8.
+
+Four items were added afterwards, in a second pass, and are not recorded here: the
+first pass verified each block of a surface on its own and so could not see a
+defect that exists only between two of them. They are UX-15 through UX-18 in
+[`ui-ux-elevation-prompt.md`](./ui-ux-elevation-prompt.md) §3.1, resolved as
+CLI-11 through CLI-14 in its §5 — all four landed, and the severity model one of
+them needed is [ADR-0005](../adr/0005-severity-of-a-caller-caused-failure.md).
+
+This workstream stays open for the changes that would reopen it: a command that
+accepts a file operand, a second operand position, or a shell whose vocabulary
 cannot be expressed as a list of words.
 
 ### 5.3 Sequencing

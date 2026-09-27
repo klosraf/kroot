@@ -7,6 +7,58 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **The help screen now says where to go next.** `kroot help` ended at the flag
+  list, so every command was discoverable but none was explorable: the hint that
+  `help` and `man` take a command name — the affordance that makes the other
+  commands reachable — was the one thing missing from the page. It closes with two
+  lines naming `kroot help <command>` and `man kroot`, built from the program's own
+  name and omitted rather than printed empty when those commands are not
+  registered.
+
+- **Completion now offers what each position actually accepts.** The scripts
+  completed command names and nothing else, so `kroot completion <TAB>` offered
+  commands rather than shells, and `kroot help <TAB>` and `kroot man <TAB>` — where
+  a command name *is* the valid answer — offered nothing at all. Every command now
+  declares its first operand, and the three generators offer that vocabulary in the
+  position it belongs to: shells after `completion`, command names after `help` and
+  `man`, and nothing after a command that takes no operand or past the first operand.
+  The declaration lives on the command rather than inside a template, so a fourth
+  shell added to `Shells` reaches help, the manual and all three scripts from one
+  place and a test fails the moment a template starts carrying its own copy of the
+  list. Two details the shells forced: the zsh case assigns its array rather than
+  listing words, because a bare word in a `case` branch is a command to zsh and
+  fails with "command not found"; and the fish condition counts the tokens before
+  the cursor, because `__fish_seen_subcommand_from` stays true at every later
+  position and the vocabulary would otherwise keep being offered after the operand
+  that already accepted one. Proved by driving a real bash and a real zsh through
+  the documented install path; fish is not installed where this suite runs, so its
+  condition is asserted structurally.
+- **`kroot <command> -h` and `--help` print that command's own help.** Three
+  spellings already meant "tell me about this command" and disagreed: `kroot help
+  version` gave the command's help, `kroot version -h` gave the *program's* help
+  because the global flag set owns `-h`, and `kroot version --help` printed the
+  version until the surplus-operand fix turned it into an error. The alias now
+  routes through the help command rather than a second renderer, so `kroot version
+  --help` and `kroot help version` print the same bytes, tolerate a failed write the
+  same way and exit alike. Only the first operand counts — `kroot version extra
+  --help` stays a usage error, because after the first operand `-h` is data — and
+  the program's own `-h` still comes from `flag.ErrHelp`, unchanged. Recorded as
+  ADR-0004 rather than inherited from a flag package's default, since `api-compatibility.md`
+  makes flags documented in the manual a stable surface from `v1.0.0`.
+- **The generated manual documents the environment.** `kroot man` now carries an
+  `ENVIRONMENT` section naming each `KROOT_*` variable, the values it accepts in the
+  parser's order, and its default — with the vocabulary passed in from the very slice
+  `parseLogLevel` validates against, so the page cannot advertise a level the binary
+  rejects, and adding a level changes the page without touching the generator. The
+  section belongs to the program page alone: a variable is read by the program, not
+  by one command, and repeating it under every command is how a manual starts
+  disagreeing with itself, so a command page carries none. A page with nothing to say
+  omits the heading rather than printing an empty one, and the definition is asserted
+  through `mandoc -T lint` and its parse tree, because it carries a quoted default —
+  punctuation a `.TP` body rarely sees.
+
 ### Changed
 
 - **A caller's mistake is no longer reported as the program's failure.** Every
@@ -23,15 +75,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the whole message. Decided in
   [`docs/adr/0005-severity-of-a-caller-caused-failure.md`](./docs/adr/0005-severity-of-a-caller-caused-failure.md).
 
-### Added
-
-- **The help screen now says where to go next.** `kroot help` ended at the flag
-  list, so every command was discoverable but none was explorable: the hint that
-  `help` and `man` take a command name — the affordance that makes the other
-  commands reachable — was the one thing missing from the page. It closes with two
-  lines naming `kroot help <command>` and `man kroot`, built from the program's own
-  name and omitted rather than printed empty when those commands are not
-  registered.
+- **The three shells no longer disagree about a declined position.** bash was
+  registered with `-o default`, so a position the script declined fell back to
+  filename completion, while fish (`-f`) and zsh (no match) offered nothing. Nobody
+  who installed one shell could observe the difference, and nobody who installed
+  two could remember which was which. kroot takes no file operand anywhere, so a
+  path offered after a rejected word is a suggestion the binary cannot accept; all
+  three now decline, bash without `-o default`. The reasoning is in the generated
+  script's own comment and in `README.md`, and a test holds the registration lines
+  of all three shells to it.
+- **A command name that resembles nothing now names where the list is.**
+  `kroot kubernetes` answered with the facts and no next step, while `kroot versioo`
+  was already answered with the command it meant. The suggestion *is* the recovery, so
+  it suppresses the pointer: a name with no near miss now ends with
+  `see "kroot help" for the command list`, and the near-miss message is unchanged. The
+  error chain still wraps both sentinels, so `errors.Is` callers are unaffected, and
+  the manual's own rejection routes through the same code, so `kroot man <typo>` is
+  answered exactly as `kroot <typo>` is.
 
 ### Fixed
 
@@ -115,70 +175,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   including the behaviours a supervisor can actually depend on: an unrecognised
   `KROOT_LOG_LEVEL` is rejected rather than coerced, and the exit code
   distinguishes a usage error from a runtime failure.
-
-### Added
-
-- **Completion now offers what each position actually accepts.** The scripts
-  completed command names and nothing else, so `kroot completion <TAB>` offered
-  commands rather than shells, and `kroot help <TAB>` and `kroot man <TAB>` — where
-  a command name *is* the valid answer — offered nothing at all. Every command now
-  declares its first operand, and the three generators offer that vocabulary in the
-  position it belongs to: shells after `completion`, command names after `help` and
-  `man`, and nothing after a command that takes no operand or past the first operand.
-  The declaration lives on the command rather than inside a template, so a fourth
-  shell added to `Shells` reaches help, the manual and all three scripts from one
-  place and a test fails the moment a template starts carrying its own copy of the
-  list. Two details the shells forced: the zsh case assigns its array rather than
-  listing words, because a bare word in a `case` branch is a command to zsh and
-  fails with "command not found"; and the fish condition counts the tokens before
-  the cursor, because `__fish_seen_subcommand_from` stays true at every later
-  position and the vocabulary would otherwise keep being offered after the operand
-  that already accepted one. Proved by driving a real bash and a real zsh through
-  the documented install path; fish is not installed where this suite runs, so its
-  condition is asserted structurally.
-- **`kroot <command> -h` and `--help` print that command's own help.** Three
-  spellings already meant "tell me about this command" and disagreed: `kroot help
-  version` gave the command's help, `kroot version -h` gave the *program's* help
-  because the global flag set owns `-h`, and `kroot version --help` printed the
-  version until the surplus-operand fix turned it into an error. The alias now
-  routes through the help command rather than a second renderer, so `kroot version
-  --help` and `kroot help version` print the same bytes, tolerate a failed write the
-  same way and exit alike. Only the first operand counts — `kroot version extra
-  --help` stays a usage error, because after the first operand `-h` is data — and
-  the program's own `-h` still comes from `flag.ErrHelp`, unchanged. Recorded as
-  ADR-0004 rather than inherited from a flag package's default, since `api-compatibility.md`
-  makes flags documented in the manual a stable surface from `v1.0.0`.
-- **The generated manual documents the environment.** `kroot man` now carries an
-  `ENVIRONMENT` section naming each `KROOT_*` variable, the values it accepts in the
-  parser's order, and its default — with the vocabulary passed in from the very slice
-  `parseLogLevel` validates against, so the page cannot advertise a level the binary
-  rejects, and adding a level changes the page without touching the generator. The
-  section belongs to the program page alone: a variable is read by the program, not
-  by one command, and repeating it under every command is how a manual starts
-  disagreeing with itself, so a command page carries none. A page with nothing to say
-  omits the heading rather than printing an empty one, and the definition is asserted
-  through `mandoc -T lint` and its parse tree, because it carries a quoted default —
-  punctuation a `.TP` body rarely sees.
-
-### Changed
-
-- **The three shells no longer disagree about a declined position.** bash was
-  registered with `-o default`, so a position the script declined fell back to
-  filename completion, while fish (`-f`) and zsh (no match) offered nothing. Nobody
-  who installed one shell could observe the difference, and nobody who installed
-  two could remember which was which. kroot takes no file operand anywhere, so a
-  path offered after a rejected word is a suggestion the binary cannot accept; all
-  three now decline, bash without `-o default`. The reasoning is in the generated
-  script's own comment and in `README.md`, and a test holds the registration lines
-  of all three shells to it.
-- **A command name that resembles nothing now names where the list is.**
-  `kroot kubernetes` answered with the facts and no next step, while `kroot versioo`
-  was already answered with the command it meant. The suggestion *is* the recovery, so
-  it suppresses the pointer: a name with no near miss now ends with
-  `see "kroot help" for the command list`, and the near-miss message is unchanged. The
-  error chain still wraps both sentinels, so `errors.Is` callers are unaffected, and
-  the manual's own rejection routes through the same code, so `kroot man <typo>` is
-  answered exactly as `kroot <typo>` is.
 
 ## [v0.1.0] - 2026-09-27
 
