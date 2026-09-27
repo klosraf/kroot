@@ -16,6 +16,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+
+	"github.com/klosraf/kroot/internal/cli"
 )
 
 // Build metadata. All three values are injected at link time:
@@ -40,14 +42,9 @@ const (
 	exitUsage   = 2 // usage error: unknown flag, unknown command, bad argument
 )
 
-// ErrUsage marks a failure caused by how the program was invoked rather than by
-// what it was asked to do. It is the sentinel behind exit code 2, so a caller can
-// tell "you called me wrong" from "it broke while running".
-var ErrUsage = errors.New("usage error")
-
-// ErrUnknownCommand is returned when the user passes an unrecognised command.
-var ErrUnknownCommand = errors.New("unknown command")
-
+// Usage errors are the framework's to define, since it is the layer that decides
+// what a well-formed invocation is; package main only maps them to process exit
+// codes below.
 func main() {
 	os.Exit(realMain(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -82,7 +79,7 @@ func exitCodeFor(err error) int {
 	switch {
 	case err == nil:
 		return exitSuccess
-	case errors.Is(err, ErrUsage):
+	case errors.Is(err, cli.ErrUsage):
 		return exitUsage
 	default:
 		return exitFailure
@@ -177,58 +174,128 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("run cancelled: %w", err)
 	}
-	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
 
-	// flag calls fs.Usage in two situations: an explicit -h, which is a success
-	// and belongs on stdout, and a parse failure, which is a diagnostic and
-	// belongs on stderr. The callback cannot tell them apart, so it renders into
-	// a buffer and run() decides where the text goes. flag's own error line is
-	// discarded because main logs the failure once, structurally, instead of
-	// twice in two different formats on two different streams.
+	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
 	var usage bytes.Buffer
+
+	// The program is built before parsing because flag needs the help text for
+	// its own -h handling, and that handling is the same in both directions: a
+	// requested -h is the requested output, a parse failure is a diagnostic.
+	program, err := newProgram(fs)
+	if err != nil {
+		return err
+	}
+
+	// flag writes its own error line and then calls fs.Usage, and it does both
+	// for an explicit -h (a success, stdout) and for a bad flag (a failure,
+	// stderr). The callback cannot tell them apart, so it renders into a buffer
+	// and run() decides where the text belongs. Writing to a bytes.Buffer cannot
+	// fail, which is why the render error is dropped here and reported by the
+	// paths that write to a stream.
 	fs.SetOutput(io.Discard)
-	fs.Usage = func() { printUsage(&usage, fs) }
+	fs.Usage = func() { _ = program.GeneralHelp(&usage) }
 
 	showVersion := fs.Bool("version", false, "print the version and exit")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			// The user asked for help and got it, so the answer is the requested
-			// output: exit 0, text on stdout. `-h` failing while `help` succeeded
-			// was two spellings of one request with two different answers.
 			_, _ = usage.WriteTo(stdout)
 			return nil
 		}
 		// Every other parse failure is a usage error: no amount of retrying makes
 		// -nope a valid flag. The usage text goes to stderr so that redirecting
-		// stdout does not capture help text from a failure. A write failure here
-		// is swallowed for the same reason printUsage swallows them: there is
-		// nowhere left to report it.
+		// stdout does not capture help text from a failure.
 		_, _ = usage.WriteTo(stderr)
-		return fmt.Errorf("%w: parsing flags: %w", ErrUsage, err)
+		return fmt.Errorf("%w: parsing flags: %w", cli.ErrUsage, err)
 	}
 
 	if *showVersion {
 		return printVersion(stdout)
 	}
 
-	command := "help"
-	if fs.NArg() > 0 {
-		command = fs.Arg(0)
+	// No command is the same request as `help`: one spelling, one answer. The
+	// operands are sliced only when there are any: slicing an empty slice from
+	// index 1 panics, and "no arguments" is a supported invocation.
+	name := "help"
+	var operands []string
+	if args := fs.Args(); len(args) > 0 {
+		name, operands = args[0], args[1:]
 	}
 
-	switch command {
-	case "help":
-		printUsage(stdout, fs)
-		return nil
-	case "version":
-		return printVersion(stdout)
-	default:
-		// Wrapped in ErrUsage as well: an unrecognised command is the caller's
-		// mistake and maps to exit 2, while ErrUnknownCommand still answers
-		// "which command?" for tests and callers inspecting the chain.
-		return fmt.Errorf("%w: %w: %q", ErrUsage, ErrUnknownCommand, command)
+	command, ok := program.Commands.Lookup(name)
+	if !ok {
+		return program.Commands.Error(name)
 	}
+
+	return command.Run(ctx, cli.Env{Stdout: stdout, Stderr: stderr, Args: operands})
+}
+
+// newProgram declares the command surface. Every command is constructed here so
+// the registry can be validated once, at startup, instead of being discovered
+// one missing summary at a time.
+func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
+	program := &cli.Program{
+		Name:      "kroot",
+		Summary:   "application skeleton",
+		UsageLine: "kroot [flags] <command>",
+		Flags: func(w io.Writer) error {
+			return cli.PrintFlags(w, fs)
+		},
+	}
+
+	registry, err := cli.New(
+		cli.Command{
+			Name:    "help",
+			Summary: "print this help, or the help of one command",
+			Usage:   "kroot help [command]",
+			Long:    "Print the command list, or the detail of one command when a name is given.",
+			Run: func(_ context.Context, env cli.Env) error {
+				return runHelp(program, env)
+			},
+		},
+		cli.Command{
+			Name:    "version",
+			Summary: "print the version and exit",
+			Usage:   "kroot version",
+			Long:    "Print the version, the revision it was built from and the toolchain that produced it.",
+			Run: func(_ context.Context, env cli.Env) error {
+				return printVersion(env.Stdout)
+			},
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	program.Commands = registry
+	return program, nil
+}
+
+// runHelp implements the help command.
+//
+// A help write failure is deliberately tolerated: the text already targets
+// stdout and there is nowhere left to report the failure, so failing would turn
+// an unreadable help page into a non-zero exit for no benefit. Every other
+// failure — an unknown name, too many operands — is actionable and is returned.
+func runHelp(program *cli.Program, env cli.Env) error {
+	switch {
+	case len(env.Args) == 0:
+		_ = program.GeneralHelp(env.Stdout)
+		return nil
+	case len(env.Args) > 1:
+		// Rejecting rather than ignoring: silently dropping the extra operand
+		// would hide a real mistake, and api-compatibility.md ties a bad
+		// argument to exit 2.
+		return fmt.Errorf("%w: help takes at most one command name, got %d", cli.ErrUsage, len(env.Args))
+	}
+
+	command, ok := program.Commands.Lookup(env.Args[0])
+	if !ok {
+		return program.Commands.Error(env.Args[0])
+	}
+
+	_ = program.CommandHelp(env.Stdout, command)
+	return nil
 }
 
 // printVersion writes the application version and its build metadata to out.
@@ -244,26 +311,4 @@ func printVersion(out io.Writer) error {
 		return fmt.Errorf("writing version: %w", err)
 	}
 	return nil
-}
-
-// usageTemplate is the static half of the help text; the flag list is appended
-// by (*flag.FlagSet).PrintDefaults.
-const usageTemplate = `kroot - application skeleton
-
-Usage:
-  kroot [flags] <command>
-
-Commands:
-  help       print this help and exit
-  version    print the version and exit
-
-Flags:
-`
-
-// printUsage writes the CLI help text to out.
-func printUsage(out io.Writer, fs *flag.FlagSet) {
-	// A write failure is not actionable: the help text targets the process
-	// stdout/stderr and there is no caller able to recover from it.
-	_, _ = io.WriteString(out, usageTemplate)
-	fs.PrintDefaults()
 }

@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/klosraf/kroot/internal/cli"
 )
 
 func TestRun(t *testing.T) {
@@ -41,9 +43,24 @@ func TestRun(t *testing.T) {
 			wantOutput: "kroot " + version,
 		},
 		{
+			name:       "help for one command prints that command's usage",
+			args:       []string{"help", "version"},
+			wantOutput: "Usage:\n  kroot version",
+		},
+		{
+			name:    "help with too many arguments is a usage error",
+			args:    []string{"help", "version", "extra"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "help with an unknown command suggests the closest match",
+			args:    []string{"help", "versioo"},
+			wantErr: cli.ErrUnknownCommand,
+		},
+		{
 			name:    "unknown command returns error",
 			args:    []string{"bogus"},
-			wantErr: ErrUnknownCommand,
+			wantErr: cli.ErrUnknownCommand,
 		},
 	}
 
@@ -160,7 +177,7 @@ func TestExitCodesMatchTheDocumentedContract(t *testing.T) {
 func TestRuntimeFailureIsNotAUsageError(t *testing.T) {
 	err := run(context.Background(), []string{"version"}, failingWriter{}, io.Discard)
 
-	if errors.Is(err, ErrUsage) {
+	if errors.Is(err, cli.ErrUsage) {
 		t.Fatalf("run(version) with a failing writer = %v; must not be a usage error: the invocation was correct", err)
 	}
 	if got := exitCodeFor(err); got != exitFailure {
@@ -235,7 +252,7 @@ func TestParseLogLevelRejectsAnythingElse(t *testing.T) {
 			if got := exitCodeFor(err); got != exitFailure {
 				t.Errorf("exitCodeFor(parseLogLevel(%q)) = %d; want %d: configuration rejected is exit 1", value, got, exitFailure)
 			}
-			if errors.Is(err, ErrUsage) {
+			if errors.Is(err, cli.ErrUsage) {
 				t.Errorf("parseLogLevel(%q) matched ErrUsage; a rejected environment value is not a usage error", value)
 			}
 		})
@@ -299,7 +316,7 @@ func TestRunFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	if err == nil {
 		t.Fatal("run(cancelled) = nil; want an error")
 	}
-	if errors.Is(err, ErrUsage) {
+	if errors.Is(err, cli.ErrUsage) {
 		t.Errorf("run(cancelled) error = %v; must not match ErrUsage", err)
 	}
 	if got := exitCodeFor(err); got != exitFailure {
