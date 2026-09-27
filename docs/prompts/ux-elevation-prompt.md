@@ -692,6 +692,7 @@ The states are closed, so a claim cannot be softer than what happened:
 | State | Meaning here |
 |---|---|
 | **Verificado** | A command was run, its output seen, and it supports the claim |
+| **Verificado por comparación** | The behaviour was observed before and after the change — two builds, one probe — because the interface a test would need did not exist in the tree the test would have to run against. The transcript is the evidence |
 | **Fallido** | It was run and it did not support the claim |
 | **No ejecutado** | It was available but not run — including a test that skipped. Never a pass |
 | **Bloqueado** | It could not run: a tool, a permission or an environment was missing |
@@ -840,6 +841,16 @@ A reviewer answers in order. A "no" is a request for a change, not a preference.
 
 Tools present for this run: `zsh`, `bash`, `mandoc`. `fish` is absent, so its
 structural checks skipped visibly — the designed behaviour on a developer machine.
+
+**Beyond this machine.** The same gates ran in CI for pull request
+[#25](https://github.com/klosraf/kroot/pull/25), run `36323624010`: `commit
+messages`, `lint`, `test (ubuntu-latest)` and `vulnerabilities` all passed. macOS is
+absent from that list by design rather than by omission — ADR-0002 moved it to
+pushes to `main`, so the platform is verified on the merge that produces the
+releasable ref. A reader can therefore check this register instead of taking it on
+trust. The one claim here CI cannot confirm is the driving of real shells, which
+happened on the machine that produced the binaries; §7.2 names that as *Verificado
+by comparison* rather than by a test.
 
 ### 8.2 Behaviour, observed
 
