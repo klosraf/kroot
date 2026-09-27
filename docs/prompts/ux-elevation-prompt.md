@@ -834,7 +834,20 @@ A reviewer answers in order. A "no" is a request for a change, not a preference.
 | Formatting | `make fmt-check` | clean, no diff |
 | Static analysis | `go vet ./...` | clean |
 | Lint | `bin/golangci-lint run` | **0 issues** |
-| Tests + race + coverage | `go test -race -covermode=atomic ./...` | **ok** — 97.6% of statements in `github.com/klosraf/kroot`, 98.6% in `.../internal/cli`, the latter up from the 98.4% this pass started at |
+| Tests + race + coverage | `go test -race -covermode=atomic ./...` | **ok** — 97.6% of statements in `github.com/klosraf/kroot`, **100.0%** in `.../internal/cli`, the latter up from the 98.4% this pass started at |
+
+The 100% is measured on the whole of this pass merged: the workstream below, the
+width budget, and the write-failure walk. On the workstream branch alone it read
+98.6%, and the remainder was real — the `ENVIRONMENT` section the manual gained
+here renders only when the page documents a variable, so the write-failure walk,
+whose fixture did not, never reached its two error returns. A stage walk is
+bounded by its own fixture; that is now stated in the test rather than left to
+be rediscovered.
+
+What remains uncovered in the whole repository is three guards in package `main`:
+`os.Exit` in `main()`, and the error returns after `newProgram` and `cli.New`.
+None can be triggered without editing the program itself — the net under a change
+that has not been written yet.
 | Vulnerability scan | `bin/govulncheck ./...` | No vulnerabilities found |
 | Build | `make build` | ok |
 | **The whole definition of done** | **`make ci`** | **exit 0** |
