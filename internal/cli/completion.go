@@ -341,8 +341,9 @@ _%[2]s_completions() {
     cur="${COMP_WORDS[COMP_CWORD]}"
 
     # Two positions are ever valid: the subcommand, and that subcommand's own
-    # first operand. Any later word is declined rather than guessed at, and -o
-    # default hands it to bash's filename completion.
+    # first operand. Any later word is declined rather than guessed at: kroot
+    # takes no file operand, so a filename fallback would offer paths the binary
+    # cannot accept.
     if [ "$COMP_CWORD" -eq 1 ]; then
         # Deliberately unquoted: compgen writes one word per line and COMPREPLY is a
         # word array, so the split *is* the assignment. Quoting it would produce a
@@ -368,9 +369,12 @@ _%[2]s_completions() {
     return 0
 }
 
-# -o default hands back every word this function declines to bash's own filename
-# completion, so declining an operand does not leave the caller with nothing.
-complete -o default -F _%[2]s_completions %[1]s
+# A declined position stays declined, and this was the last thing the three
+# shells disagreed on: bash can be told to fall back to filename completion with
+# -o default, and it is not told. kroot takes no file operand anywhere, so a
+# path offered after a rejected word would be a suggestion the binary cannot
+# accept — and fish's -f above, and zsh returning no match, say the same thing.
+complete -F _%[2]s_completions %[1]s
 `
 
 const zshScript = `#compdef %[1]s

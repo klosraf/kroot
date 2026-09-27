@@ -48,7 +48,7 @@ func TestWriteCompletionRendersEveryShell(t *testing.T) {
 		shell  string
 		marker string
 	}{
-		{shell: "bash", marker: "complete -o default -F _kroot_completions kroot"},
+		{shell: "bash", marker: "complete -F _kroot_completions kroot"},
 		{shell: "fish", marker: "complete -c kroot -f"},
 		{shell: "zsh", marker: "compdef _kroot_completions kroot"},
 	}
@@ -524,6 +524,36 @@ func TestFishScriptCarriesTheOperandVocabulary(t *testing.T) {
 	// did would be offering values a command cannot accept.
 	if strings.Contains(script, "seen_subcommand_from version") {
 		t.Errorf("fish script offers an operand for a command that declares none:\n%s", script)
+	}
+}
+
+// TestNoShellFallsBackToFilenamesAfterADeclinedPosition settles what the three
+// shells do with a position they decline, which was the last thing they disagreed
+// on: bash was registered with -o default and so offered paths, while fish's -f
+// and zsh's no-match offered nothing.
+//
+// kroot takes no file operand anywhere, so a path offered after a rejected word is
+// a suggestion the binary cannot accept. All three therefore decline, and this test
+// holds them to it: the option is absent from the bash script, the suppression is
+// present in the fish one, and zsh has no filename fallback to remove.
+func TestNoShellFallsBackToFilenamesAfterADeclinedPosition(t *testing.T) {
+	// The registration line is the behaviour; the phrase also appears in the
+	// comment explaining why the option is absent, and a test that matched the
+	// bare word would fail on its own documentation.
+	bash := render(t, "bash", "kroot", testEntries())
+	if strings.Contains(bash, "complete -o default") {
+		t.Errorf("bash script still falls back to filename completion:\n%s", bash)
+	}
+
+	fish := render(t, "fish", "kroot", testEntries())
+	if want := "complete -c kroot -f"; !strings.Contains(fish, want) {
+		t.Errorf("fish script does not suppress filename completion (%q):\n%s", want, fish)
+	}
+
+	// zsh has no opt-in to remove: declining means returning no match, which the
+	// template already does past the first operand.
+	if strings.Contains(render(t, "zsh", "kroot", testEntries()), "complete -o default") {
+		t.Error("zsh script gained a filename fallback")
 	}
 }
 
