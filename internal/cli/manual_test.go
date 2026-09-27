@@ -548,27 +548,51 @@ func TestWriteManualReportsAFailureAtEveryStage(t *testing.T) {
 			name = "program"
 		}
 		t.Run(name, func(t *testing.T) {
-			count := &countWriter{}
-			if err := WriteManual(count, p, command, info); err != nil {
-				t.Fatalf("WriteManual(%q) error = %v; want nil", command, err)
+			walkEveryWriteFails(t, p, command, info)
+
+			// The ENVIRONMENT section renders only when the info documents a
+			// variable, so the walk above never reaches its two error returns.
+			// A walk is bounded by its own fixture, and this one is not.
+			withEnv := testInfo()
+			withEnv.Env = []EnvVar{
+				{Name: "KROOT_LOG_LEVEL", Default: "info", Values: []string{"debug", "info"}},
 			}
-
-			// remaining = n lets writes 1..n through and fails write n+1, so the
-			// range covers a failure at every write the page actually makes.
-			for n := range count.writes {
-				w := &failAfterWriter{remaining: n}
-
-				err := WriteManual(w, p, command, info)
-
-				if err == nil {
-					t.Fatalf("WriteManual(%q) = nil when the destination failed on write %d of %d; a truncated page must be reported",
-						command, n+1, count.writes)
-				}
-				if !strings.Contains(err.Error(), "write failed") {
-					t.Errorf("WriteManual(%q) error = %v; want it to wrap the underlying failure", command, err)
-				}
-			}
+			walkEveryWriteFails(t, p, command, withEnv)
 		})
+	}
+}
+
+// walkEveryWriteFails requires WriteManual to report a destination failure at
+// every write one page makes, counting the writes a successful render takes.
+//
+// The count comes from a successful render rather than a constant, so a stage
+// added to the page is walked the day it is added and not the day someone
+// remembers the number is stale.
+func walkEveryWriteFails(t *testing.T, p *Program, command string, info ManualInfo) {
+	t.Helper()
+
+	count := &countWriter{}
+	if err := WriteManual(count, p, command, info); err != nil {
+		t.Fatalf("WriteManual(%q) error = %v; want nil", command, err)
+	}
+	if count.writes == 0 {
+		t.Fatalf("WriteManual(%q) wrote nothing; the walk below would prove nothing", command)
+	}
+
+	// remaining = n lets writes 1..n through and fails write n+1, so the range
+	// covers a failure at every write the page actually makes.
+	for n := range count.writes {
+		w := &failAfterWriter{remaining: n}
+
+		err := WriteManual(w, p, command, info)
+
+		if err == nil {
+			t.Fatalf("WriteManual(%q) = nil when the destination failed on write %d of %d; a truncated page must be reported",
+				command, n+1, count.writes)
+		}
+		if !strings.Contains(err.Error(), "write failed") {
+			t.Errorf("WriteManual(%q) error = %v; want it to wrap the underlying failure", command, err)
+		}
 	}
 }
 
