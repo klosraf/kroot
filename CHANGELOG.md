@@ -28,6 +28,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   v1.8.0 installed into `./bin` by `make tools` — so local and CI runs cannot
   drift apart.
 
+### Fixed
+
+- `commitlint.config.mjs` accepted only a subset of the Conventional Commits
+  types, so a valid `style(...)` commit passed the local `commit-msg` hook but
+  would have been rejected by the CI `commits` job. The vocabulary now matches
+  the specification.
+- The commitlint `subject-case` rule rejected legitimate mid-subject acronyms
+  such as `CLI`, `HTTP` and `API`, contradicting the naming rules in
+  `docs/enterprise/coding-standards.md`.
+
 ### Notes
 
 - The project type (CLI / service / full-stack application) is not finalised;

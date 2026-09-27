@@ -8,7 +8,9 @@
 export default {
   extends: ["@commitlint/config-conventional"],
   rules: {
-    // Keep the vocabulary closed: adding a type is a deliberate decision.
+    // The set matches the Conventional Commits specification, which is also
+    // what the repository's global commit-msg hook accepts, so a message that
+    // passes locally is never rejected by CI over its type alone.
     "type-enum": [
       2,
       "always",
@@ -16,12 +18,13 @@ export default {
         "feat",
         "fix",
         "docs",
-        "chore",
+        "style",
         "refactor",
-        "test",
         "perf",
-        "ci",
+        "test",
         "build",
+        "ci",
+        "chore",
         "revert",
       ],
     ],

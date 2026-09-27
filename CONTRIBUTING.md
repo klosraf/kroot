@@ -67,12 +67,13 @@ Conventional Commits, with the affected package or area as the scope:
 | `feat` | new user-visible capability |
 | `fix` | bug fix |
 | `docs` | documentation only |
-| `chore` | tooling, dependencies, housekeeping |
+| `style` | formatting only, no change in meaning |
 | `refactor` | behaviour-preserving restructuring |
 | `test` | tests only |
 | `perf` | measurable performance work |
 | `ci` | CI/CD configuration |
 | `build` | build system or packaging |
+| `chore` | tooling, dependencies, housekeeping |
 | `revert` | revert of an earlier commit |
 
 The description is imperative, lower-case, and has no trailing period.
@@ -81,6 +82,26 @@ The description is imperative, lower-case, and has no trailing period.
 feat(server): add /healthz readiness probe
 fix(cli): stop swallowing the config parse error
 docs(enterprise): record the persistence ADR
+```
+
+### Where messages are validated
+
+Two validators run, and they must agree — a message accepted locally that CI
+rejects is a defect in this repository, not in your commit.
+
+| Where | What it enforces | Effect |
+|---|---|---|
+| Local `commit-msg` hook (`~/.config/git/hooks`) | ≤ 72-character subject; Conventional Commits shape | blocks on length, warns on format |
+| `pnpm exec commitlint --edit <file>` | everything in `commitlint.config.mjs` | blocks |
+| CI `commits` job | everything in `commitlint.config.mjs` | blocks the PR |
+
+**CI is authoritative.** The local hook is deliberately lenient so that a
+work-in-progress commit is not blocked mid-task; CI is where the convention is
+actually enforced. To check a message before committing:
+
+```sh
+git commit -m "feat(cli): add a thing" --dry-run   # or:
+printf 'feat(cli): add a thing\n' | pnpm exec commitlint
 ```
 
 ## Pull requests
