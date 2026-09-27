@@ -333,9 +333,7 @@ func TestWriteCompletionSurvivesAHostileSummary(t *testing.T) {
 // the summary that went in. Escaping that was merely plausible would mangle it
 // here.
 func TestZshCompletionRoundTripsAHostileSummary(t *testing.T) {
-	if _, err := exec.LookPath("zsh"); err != nil {
-		t.Skipf("zsh is not installed: %v", err)
-	}
+	requireTool(t, "zsh")
 
 	hostileSummary := "it's a 'trap'; $(rm -rf /) \\`quoted\\` \"double\""
 	script := render(t, "zsh", "kroot", []Entry{{Name: "help", Summary: hostileSummary}})
@@ -404,9 +402,7 @@ func TestGeneratedScriptsParse(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.shell, func(t *testing.T) {
-			if _, err := exec.LookPath(tc.shell); err != nil {
-				t.Skipf("%s is not installed: %v", tc.shell, err)
-			}
+			requireTool(t, tc.shell)
 
 			script := render(t, tc.shell, "kroot", testEntries())
 			path := writeScript(t, tc.shell, script)
@@ -424,9 +420,7 @@ func TestGeneratedScriptsParse(t *testing.T) {
 // way bash drives it. A script that parses but returns nothing would pass every
 // other test here, and a caller would get a tab key that does nothing.
 func TestGeneratedBashScriptActuallyCompletes(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skipf("bash is not installed: %v", err)
-	}
+	requireTool(t, "bash")
 
 	script := render(t, "bash", "kroot", testEntries())
 	path := writeScript(t, "bash", script)
@@ -520,9 +514,7 @@ func TestFunctionNameIsAValidIdentifier(t *testing.T) {
 // above: the generated bash script has to reference a function that bash will
 // accept, which is only true if the name was sanitised.
 func TestDashlessBinaryNameProducesAValidScript(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skipf("bash is not installed: %v", err)
-	}
+	requireTool(t, "bash")
 
 	script := render(t, "bash", "k-root", testEntries())
 	if !strings.Contains(script, "_k_root_completions()") {
