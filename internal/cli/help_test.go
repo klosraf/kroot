@@ -209,6 +209,48 @@ func TestCommandListStaysWithinTheDesignWidth(t *testing.T) {
 	}
 }
 
+// TestGeneralHelpReportsAFailureAtEveryWrite walks the destination's failure
+// through every write a full help output takes, and requires an error each time.
+//
+// The other write-failure test fails the very first write, which proves the
+// header is checked and nothing else. Help writes in pieces — a header, one line
+// per command, the flags heading, the flag list — and each of those is a place
+// where a truncated help could be reported as success. The manual's generator
+// already walks its own writes the same way; this is the same obligation on the
+// other renderer, and the same bug it catches: a stage that swallows its failure
+// and lets the caller believe it received a whole document.
+func TestGeneralHelpReportsAFailureAtEveryWrite(t *testing.T) {
+	fs := flag.NewFlagSet("kroot", flag.ContinueOnError)
+	fs.Bool("version", false, "print the version and exit")
+	program := testProgram(t, fs)
+
+	// Count the writes a successful rendering makes, so the walk below covers
+	// every stage rather than a guessed number of them.
+	var counter countWriter
+	if err := program.GeneralHelp(&counter); err != nil {
+		t.Fatalf("GeneralHelp() error = %v; want nil", err)
+	}
+	if counter.writes == 0 {
+		t.Fatal("GeneralHelp() wrote nothing; the walk below would prove nothing")
+	}
+
+	for n := range counter.writes {
+		err := program.GeneralHelp(&failAfterWriter{remaining: n})
+		if err == nil {
+			t.Errorf("GeneralHelp() = nil when the destination failed on write %d of %d: a truncated help must be reported",
+				n+1, counter.writes)
+			continue
+		}
+		if !strings.Contains(err.Error(), "write failed") {
+			t.Errorf("GeneralHelp() error = %v; want it to wrap the underlying failure", err)
+		}
+	}
+}
+
+// countWriter is shared with the manual's tests: both renderers write in
+// pieces, and both are walked write by write to prove a truncated document is
+// reported rather than returned as success.
+
 // TestRenderingReportsWriteFailures proves help does not claim success when the
 // destination refused the text; the caller decides what a broken pipe means.
 func TestRenderingReportsWriteFailures(t *testing.T) {
