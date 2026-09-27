@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-09-27
+
+The first release. Everything below shipped together, because the terminal core
+was built as one piece: a command registry, the help and completion and manual
+pages rendered from it, a documented exit-code contract, and the first
+configuration variable. There is no HTTP API, no persistence and no frontend; the
+project type is a terminal-first CLI application, decided in
+`docs/adr/0003-cli-first-terminal-application.md`.
+
+Nothing here is a compatibility guarantee yet. The guarantees in
+[`docs/enterprise/api-compatibility.md`](./docs/enterprise/api-compatibility.md)
+take effect at `v1.0.0`, and while `MAJOR` is `0` the CLI surface may still change
+in a MINOR release.
+
 ### Added
 
 - `kroot man [command]` writes a manual page in roff source to standard output —
@@ -233,9 +247,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`docs/adr/0003-cli-first-terminal-application.md`). The HTTP and persistence
   layers remain open and each still needs its own ADR; the module favours the Go
   standard library until one says otherwise.
-- No public API, CLI flag or environment variable is guaranteed stable before
-  the first `v0.1.0` tag. The compatibility guarantees documented in
-  `docs/enterprise/api-compatibility.md` take effect at `v1.0.0`.
+- No public API, CLI flag or environment variable is guaranteed stable by this
+  release or any `v0.x` release. The compatibility guarantees documented in
+  `docs/enterprise/api-compatibility.md` take effect at `v1.0.0`, and while
+  `MAJOR` is `0` the public surface may still change in a MINOR release. This
+  note previously read "before the first `v0.1.0` tag", which described a tag
+  that did not exist; the tag existing is not what makes the guarantees start.
 - Vulnerability reports go to the maintainer's email, as `SECURITY.md` documents.
   GitHub's private vulnerability reporting is not available on a private
   repository without GitHub Advanced Security, so it is not a channel here; this
