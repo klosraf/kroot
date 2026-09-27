@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- `SECURITY.md` described a repository that is not this one, in three places. It
+  stated the reporting channel was constrained because the repository is private
+  — it is **public**, and GitHub's private vulnerability reporting is available
+  here (the API answers `{"enabled": false}` rather than the 404 a private
+  repository returns), though it is not enabled yet, so email remains the working
+  channel. It told operators to "restrict network exposure ... unless a reverse
+  proxy with TLS and authentication sits in front" and to "monitor logs for
+  unexpected authentication" — kroot opens no sockets, speaks no protocol and has
+  no authentication, so that was advice for a server the project does not have. And
+  it claimed `govulncheck ./...` "gates every PR that touches Go code", which is
+  the exact drift already recorded as fixed in `AGENTS.md` and
+  `docs/enterprise/security-policy.md`; the `vulnerabilities` job has no path
+  filter and runs on every pull request, and this file was simply missed when the
+  other two were corrected. The document now states what the program is — no
+  network surface, no authentication, no persistence yet, environment-only
+  configuration — and gives operator guidance that applies to a local binary,
+  including the behaviours a supervisor can actually depend on: an unrecognised
+  `KROOT_LOG_LEVEL` is rejected rather than coerced, and the exit code
+  distinguishes a usage error from a runtime failure.
+
 ## [v0.1.0] - 2026-09-27
 
 The first release. Everything below shipped together, because the terminal core
