@@ -2,16 +2,24 @@
 
 > **Do not open a public issue for a suspected vulnerability.**
 
-Report it through **GitHub private vulnerability reporting**: open the
-repository's **Security** tab and choose **Report a vulnerability**. The report
-stays private to the maintainers until a fix ships.
+Email **`sr.klosraf@gmail.com`** with a subject starting with
+`[kroot-security]`. The report reaches only the maintainer, and it is acted on
+before anything is published.
 
-If you cannot use GitHub, email **`sr.klosraf@gmail.com`** with a subject
-starting with `[kroot-security]`. Include the same information listed below.
+<!--
+The reporting channel is constrained by the repository's visibility:
 
-<!-- TODO (before the first public release): if a project mailbox and domain are
-     established, add them here as the preferred channel and keep the GitHub
-     advisory flow as the fallback. Delete this note once decided. -->
+- Private repository (current): GitHub's private vulnerability reporting is not
+  available — the API returns 404 unless the account has GitHub Advanced
+  Security — so email is the channel. Repository issues are not an alternative:
+  although they are collaborator-only, a disclosure belongs in a private
+  conversation, not in a tracker.
+- Public repository: enable GitHub private vulnerability reporting
+  (Settings -> Code security) and make it the primary channel, keeping the email
+  as the fallback.
+-->
+
+Include the same information listed below, whichever channel you use.
 
 ## Reporting a vulnerability
 

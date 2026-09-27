@@ -46,9 +46,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The commitlint `subject-case` rule rejected legitimate mid-subject acronyms
   such as `CLI`, `HTTP` and `API`, contradicting the naming rules in
   `docs/enterprise/coding-standards.md`.
-- The `commits` CI job no longer runs for Dependabot and Renovate pull requests,
-  whose generated sentence-case subjects would fail the `subject-case` rule by
-  construction.
+- `pnpm/action-setup` failed in CI with "Multiple versions of pnpm specified":
+  the workflow declared `version: 9` while `package.json` declared
+  `packageManager` (`pnpm@9.15.4`). The workflow no longer passes a version,
+  leaving `package.json` as the single source of truth.
+- A planned exemption from commit linting for Dependabot and Renovate was
+  dropped before merge. It rested on the assumption that their generated
+  subjects are sentence-case; measured against the real messages, both
+  `ci(deps): bump actions/checkout from 4 to 7` and
+  `build(deps-dev): bump @commitlint/cli from 19.8.1 to 21.2.3` pass the rules.
+  An exemption granted for a non-existent problem would only have let genuinely
+  malformed bot commits through unchallenged.
+- `SECURITY.md` directed reporters to GitHub private vulnerability reporting,
+  which GitHub does not provide on a private repository (the API returns 404
+  without GitHub Advanced Security). Email is now the documented channel, with
+  the GitHub flow described as the channel to enable if the repository becomes
+  public.
+- The `commits` job used a job-level `if`, so on a push it reported as skipped.
+  A skipped job leaves its required status check expected forever and blocks
+  every pull request once branch protection is enabled. The job now always runs
+  and reports success on the paths where linting does not apply.
 
 ### Notes
 

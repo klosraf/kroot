@@ -117,36 +117,54 @@ jobs:
   # ---------------------------------------------------------------------------
   # Commit message convention (Conventional Commits with a scope).
   #
-  # Bots are excluded: Dependabot generates sentence-case subjects ("Bump x from
-  # 1 to 2") that the subject-case rule rejects by design, so gating them would
-  # only produce permanently red PRs. Their change is reviewed on its merits.
+  # This job always runs, and always reports success on the paths where linting
+  # does not apply. That is deliberate: a job skipped by a job-level `if` leaves
+  # its required status check expected forever, which blocks every pull request.
+  # Reporting green from a no-op keeps the check usable as a required gate.
+  #
+  # Linting applies to pull requests only: a push has no base..head range to
+  # inspect. Dependency bots are *not* exempt — their generated messages were
+  # measured against commitlint and pass, so an exemption would only let a
+  # malformed bot commit through unchallenged.
   # ---------------------------------------------------------------------------
   commits:
     name: commit messages
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.actor != 'dependabot[bot]' &&
-      github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Decide whether commit linting applies
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "applies=false" >> "$GITHUB_OUTPUT"
+            echo "Not a pull request: there is no base..head range to lint."
+          else
+            echo "applies=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.scope.outputs.applies == 'true'
         with:
           # commitlint needs both endpoints of the range.
           fetch-depth: 0
 
+      # No `version` input on purpose: package.json declares packageManager, and
+      # the action fails when both are present ("Multiple versions of pnpm
+      # specified"). package.json stays the single source of truth.
       - uses: pnpm/action-setup@v6
-        with:
-          version: 9
+        if: steps.scope.outputs.applies == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.applies == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Install tooling
+        if: steps.scope.outputs.applies == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Lint commit messages
+        if: steps.scope.outputs.applies == 'true'
         run: |
           pnpm exec commitlint \
             --from "${{ github.event.pull_request.base.sha }}" \
