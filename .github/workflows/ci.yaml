@@ -122,10 +122,10 @@ jobs:
   # its required status check expected forever, which blocks every pull request.
   # Reporting green from a no-op keeps the check usable as a required gate.
   #
-  # Linting is skipped for:
-  #   - events other than pull_request, where there is no base..head range;
-  #   - Dependabot and Renovate, whose generated sentence-case subjects
-  #     ("Bump x from 1 to 2") the subject-case rule rejects by construction.
+  # Linting applies to pull requests only: a push has no base..head range to
+  # inspect. Dependency bots are *not* exempt — their generated messages were
+  # measured against commitlint and pass, so an exemption would only let a
+  # malformed bot commit through unchallenged.
   # ---------------------------------------------------------------------------
   commits:
     name: commit messages
@@ -137,9 +137,6 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "applies=false" >> "$GITHUB_OUTPUT"
             echo "Not a pull request: there is no base..head range to lint."
-          elif [ "${{ github.actor }}" = "dependabot[bot]" ] || [ "${{ github.actor }}" = "renovate[bot]" ]; then
-            echo "applies=false" >> "$GITHUB_OUTPUT"
-            echo "Dependency bot: the commit message is generated, not authored."
           else
             echo "applies=true" >> "$GITHUB_OUTPUT"
           fi
@@ -150,10 +147,11 @@ jobs:
           # commitlint needs both endpoints of the range.
           fetch-depth: 0
 
+      # No `version` input on purpose: package.json declares packageManager, and
+      # the action fails when both are present ("Multiple versions of pnpm
+      # specified"). package.json stays the single source of truth.
       - uses: pnpm/action-setup@v6
         if: steps.scope.outputs.applies == 'true'
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         if: steps.scope.outputs.applies == 'true'
