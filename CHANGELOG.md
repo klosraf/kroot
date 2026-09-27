@@ -7,7 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **A caller's mistake is no longer reported as the program's failure.** Every
+  diagnostic was logged as `level=ERROR msg="kroot failed"`, so a mistyped command
+  and an unreadable filesystem produced records differing only in the text of
+  `err`. Three defects lived in that line: a usage error was attributed to the
+  program, `KROOT_LOG_LEVEL=warn` could not silence a typo (so `error` described
+  nearly every diagnostic the binary emits), and the recovery — the only part
+  written for a person — sat buried in an `err=` attribute behind a timestamp
+  nobody asked for. A usage error is now logged at `WARN` as `kroot: usage error`;
+  a configuration or runtime failure stays at `ERROR`. The level follows the same
+  split the exit code already used, so the two cannot disagree, and the record's
+  keys are unchanged, so a redirected consumer still receives the same shape with
+  the whole message. Decided in
+  [`docs/adr/0005-severity-of-a-caller-caused-failure.md`](./docs/adr/0005-severity-of-a-caller-caused-failure.md).
+
+### Added
+
+- **The help screen now says where to go next.** `kroot help` ended at the flag
+  list, so every command was discoverable but none was explorable: the hint that
+  `help` and `man` take a command name — the affordance that makes the other
+  commands reachable — was the one thing missing from the page. It closes with two
+  lines naming `kroot help <command>` and `man kroot`, built from the program's own
+  name and omitted rather than printed empty when those commands are not
+  registered.
+
 ### Fixed
+
+- **The `Flags:` block of `kroot help` was laid out by the standard library while
+  the block above it was laid out by kroot.** `flag.PrintDefaults` separates a
+  name from its usage with a literal tab and a four-space hanging indent, so one
+  screen carried two typographic rules at once. The block is now rendered with
+  kroot's own computed column — the same padding the command list uses — so no
+  human-facing surface contains a tab, and the manual still renders each flag
+  separately.
+- **`kroot help a b` and `kroot man a b` named no next step.** Every other
+  rejection already ended in something actionable — a near miss, the command list,
+  the command's own help — but too many operands produced only a count, leaving
+  the one failure on that path a caller could not act on. Both now name the correct
+  form, and still exit `2` with nothing on stdout.
 
 - **The zsh completion script did not exist where the product documents installing
   it.** The generated file carried no `#compdef` line, so `compinit` never associated
@@ -392,5 +431,3 @@ in a MINOR release.
   repository without GitHub Advanced Security, so it is not a channel here; this
   note used to say otherwise. A project mailbox and domain can replace the
   fallback once one exists.
-
-

@@ -13,6 +13,12 @@
   stderr and exits `1` (see `api-compatibility.md` § "Exit codes"). The failure
   is reported at `ERROR` — no configured level may suppress the record that
   explains why it was rejected.
+- The level follows the **cause**, and agrees with the exit code beside it. A
+  failure the caller can fix by re-invoking — a usage error, exit `2` — is the
+  caller's and is reported at `WARN` as `kroot: usage error`. Everything else is the
+  program's and is reported at `ERROR`. The split is the same one
+  `api-compatibility.md` § "Exit codes" draws, so the two cannot disagree; see
+  [`docs/adr/0005-severity-of-a-caller-caused-failure.md`](../adr/0005-severity-of-a-caller-caused-failure.md).
 - Encoding follows the destination, not a flag: stderr attached to a terminal
   gets human-readable text, stderr redirected to a pipe or a file gets JSON. The
   structured keys are identical either way, and only the encoding is unstabilised
