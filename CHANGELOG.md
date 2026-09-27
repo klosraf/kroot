@@ -51,6 +51,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The repository sent vulnerability reporters to a channel that does not exist.
+  `SECURITY.md` had already been corrected to name the maintainer's email,
+  because GitHub does not offer private vulnerability reporting for a private
+  repository without GitHub Advanced Security (the API returns 404), but
+  `docs/adr/0001-adopt-enterprise-charter.md` still said reports "arrive through
+  GitHub private vulnerability reporting", and this file's `### Notes` section
+  said the same — so this document contradicted itself, carrying the correction
+  in `### Fixed` above and the disproven claim at the bottom. Someone following
+  either would have looked for a button GitHub does not offer. The `### Notes`
+  section now names email, and the ADR keeps its original wording with an
+  appended correction, because ADRs are append-only (`AGENTS.md` §9).
 - Five documents claimed enforcement that does not exist, contradicting the rule
   in `docs/enterprise/README.md` that a rule which is not enforced automatically
   must say so explicitly. `.github/dependabot.yml` stated that Dependabot pull
@@ -144,8 +155,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - No public API, CLI flag or environment variable is guaranteed stable before
   the first `v0.1.0` tag. The compatibility guarantees documented in
   `docs/enterprise/api-compatibility.md` take effect at `v1.0.0`.
-- Vulnerability reports are handled through GitHub private vulnerability
-  reporting, with the maintainer's email as a fallback. A project mailbox and
-  domain can replace the fallback once one exists.
+- Vulnerability reports go to the maintainer's email, as `SECURITY.md` documents.
+  GitHub's private vulnerability reporting is not available on a private
+  repository without GitHub Advanced Security, so it is not a channel here; this
+  note used to say otherwise. A project mailbox and domain can replace the
+  fallback once one exists.
 
 
