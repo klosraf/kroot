@@ -162,6 +162,53 @@ func TestUnknownCommandNamesTheCommandListWhenNothingIsClose(t *testing.T) {
 	}
 }
 
+// TestCommandListStaysWithinTheDesignWidth renders the help for a command set
+// built to the edge of the budget and measures the bytes that come out.
+//
+// The registry already rejects a wider set, and this checks the half it cannot:
+// that the number New enforces and the layout writeCommandList produces are the
+// same number. If the padding or the formula changes on one side only, the
+// rendered line is what notices — which is the whole argument for measuring
+// output rather than trusting two places that happen to agree today.
+func TestCommandListStaysWithinTheDesignWidth(t *testing.T) {
+	// Sized to the budget by arithmetic rather than written out, so the test
+	// cannot rot into checking a set that never reached the boundary.
+	summary := "print the completion script for one shell"
+	name := strings.Repeat("c", designWidth-4-len(summary))
+
+	registry, err := New(
+		Command{Name: name, Summary: summary, Run: noop()},
+		Command{Name: "version", Summary: "print the version", Run: noop()},
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v; want a set at the budget to be accepted", err)
+	}
+
+	program := &Program{
+		Name:      "kroot",
+		Summary:   "an application",
+		UsageLine: "kroot [flags] <command>",
+		Commands:  registry,
+	}
+	var out strings.Builder
+	if err := program.GeneralHelp(&out); err != nil {
+		t.Fatalf("GeneralHelp() error = %v; want nil", err)
+	}
+
+	rendered := out.String()
+	for _, line := range strings.Split(rendered, "\n") {
+		if len(line) > designWidth {
+			t.Errorf("a rendered line is %d columns, over the design width of %d:\n%s",
+				len(line), designWidth, line)
+		}
+	}
+	// The widest line has to reach the budget, or the loop above would pass on a
+	// set that never came close to it.
+	if !strings.Contains(rendered, summary) {
+		t.Errorf("the rendered list does not contain the summary it was built for:\n%s", rendered)
+	}
+}
+
 // TestRenderingReportsWriteFailures proves help does not claim success when the
 // destination refused the text; the caller decides what a broken pipe means.
 func TestRenderingReportsWriteFailures(t *testing.T) {

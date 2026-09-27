@@ -210,6 +210,61 @@ func TestNewRejectsContradictoryOperands(t *testing.T) {
 	}
 }
 
+// TestNewRejectsACommandListThatCannotFit pins the width budget at the point where
+// a command is declared rather than where it is finally printed.
+//
+// Neither half of the budget is enough alone. A long name and a short summary
+// render on one line perfectly well, and so do a short name and a long summary;
+// it is the sum that has to fit, because the summary starts where the longest
+// name ends. The error names both lengths so whoever wrote the command knows
+// which of the two to shorten.
+func TestNewRejectsACommandListThatCannotFit(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		summary  string
+		wantText string
+	}{
+		{
+			name:     "a name too long to share a line",
+			command:  strings.Repeat("n", 80),
+			summary:  "s",
+			wantText: "over the design width of 80",
+		},
+		{
+			name:     "a summary too long to share a line",
+			command:  "n",
+			summary:  strings.Repeat("s", 80),
+			wantText: "over the design width of 80",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := New(Command{Name: tc.command, Summary: tc.summary, Run: noop()})
+			if err == nil {
+				t.Fatalf("New(name=%d, summary=%d) = nil; want a rejection", len(tc.command), len(tc.summary))
+			}
+			if !strings.Contains(err.Error(), tc.wantText) {
+				t.Errorf("New() error = %v; want it to contain %q", err, tc.wantText)
+			}
+		})
+	}
+}
+
+// TestNewAcceptsACommandListAtTheBudget is the other side of the same boundary: a
+// set that fits exactly must be accepted, or the check above would be satisfied
+// by a bound that rejects everything and teaches nothing.
+func TestNewAcceptsACommandListAtTheBudget(t *testing.T) {
+	// 2 leading spaces + 2 after the padded name + name + summary == designWidth.
+	summary := "print the completion script for one shell"
+	name := strings.Repeat("c", designWidth-4-len(summary))
+
+	if _, err := New(Command{Name: name, Summary: summary, Run: noop()}); err != nil {
+		t.Errorf("New() with a list of exactly %d columns = %v; want it accepted", designWidth, err)
+	}
+}
+
 // TestErrorKeepsTheChainAndAddsTheGuess pins the diagnostic contract: the
 // message stays matchable with errors.Is on both sentinels, and the suggestion
 // is appended rather than replacing the facts.

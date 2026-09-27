@@ -34,6 +34,14 @@ const maxSuggestionDistance = 2
 // maxSuggestions bounds the list so a bad guess cannot bury the actual error.
 const maxSuggestions = 3
 
+// designWidth is the column budget for a line a person reads: an 80-column
+// terminal, a man page source line, a README diff. It is enforced twice on
+// purpose — here, so a command nobody can describe in one line is rejected where
+// the mistake is made, and in the rendering test, so this number and
+// Program.writeCommandList cannot drift apart without a failure. A budget nothing
+// enforces is a wish.
+const designWidth = 80
+
 // Env carries everything a command is allowed to touch. Passing writers rather
 // than reaching for the process streams is what makes a command's output
 // assertable in a test.
@@ -129,6 +137,31 @@ func New(commands ...Command) (*Registry, error) {
 			return nil, fmt.Errorf("command %q is registered twice", c.Name)
 		}
 		r.byName[c.Name] = c
+	}
+
+	// The command list is the widest place a name and a summary stand side by
+	// side: two leading spaces, the name padded out to the longest name plus two,
+	// then the summary. Checking it here means a command nobody can describe in
+	// one line is caught at construction rather than rendered into a list that
+	// needs horizontal scrolling to read.
+	//
+	// The two maxima are paired, which is deliberately conservative: this is the
+	// width as though the longest name and the longest summary belonged to the
+	// same command. A bound that is never too small is a bound that holds, and
+	// the real command set has 15 columns to spare.
+	var longestName, longestSummary string
+	for _, c := range r.byName {
+		if len(c.Name) > len(longestName) {
+			longestName = c.Name
+		}
+		if len(c.Summary) > len(longestSummary) {
+			longestSummary = c.Summary
+		}
+	}
+	if width := 2 + len(longestName) + 2 + len(longestSummary); width > designWidth {
+		return nil, fmt.Errorf(
+			"the command list would render %d columns wide, over the design width of %d: shorten the longest command name (%d characters) or the longest summary (%d characters)",
+			width, designWidth, len(longestName), len(longestSummary))
 	}
 
 	return r, nil
