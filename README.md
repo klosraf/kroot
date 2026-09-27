@@ -75,6 +75,29 @@ injected: it comes from the runtime, so the binary always names the compiler tha
 produced it. See
 [`docs/enterprise/versioning-policy.md`](./docs/enterprise/versioning-policy.md).
 
+## Manual
+
+`kroot man` writes a manual page in roff source to standard output. With no
+argument it documents the program; with a command name it documents that command
+alone, under the page name `kroot-<command>`.
+
+```sh
+$ kroot man | man -l -                     # read the program page
+$ kroot man completion | man -l -          # read one command's page
+$ kroot man > share/man/man1/kroot.1       # install it
+```
+
+The page is generated from the same command registry that backs `kroot help` and
+`kroot completion`, so a command cannot be reachable but undocumented — there is
+no second list to keep in step. Each page records the version and build date it
+was generated from, and the exit-code table is passed in from the code that
+returns those codes rather than restated, so the page cannot disagree with the
+binary about them.
+
+Because the page comes from the binary, it is only as current as the binary that
+wrote it — regenerate on upgrade. Run `kroot man` through `mandoc -T lint` (or
+`groff -man`) to check a generated page; kroot's own tests do exactly that.
+
 ## Shell completion
 
 `kroot completion <bash|fish|zsh>` writes a completion script to standard output.

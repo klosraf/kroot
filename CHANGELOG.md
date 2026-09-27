@@ -9,6 +9,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `kroot man [command]` writes a manual page in roff source to standard output —
+  the program page with no argument, or one command's page under the name
+  `kroot-<command>`, so `kroot man completion | man -l -` works the way a reader
+  expects. This closes a contract that was already asserted but never satisfied:
+  `api-compatibility.md` ties the v1.0.0 stability of "subcommand names and flags
+  documented in the manual" to a manual that did not exist, and `Command.Long` was
+  documented as "the manual print" with no consumer. The page is generated from
+  the same registry that backs `help` and `completion`, so a command cannot be
+  reachable but undocumented. Each page records the version and build date it came
+  from, and the exit-code table is supplied by `main` from the constants the
+  process actually returns rather than restated in the generator, so the page
+  cannot disagree with the binary about its exit contract. Authored text is
+  escaped for roff — backslash, hyphen, a leading `.` or `'`, and tabs, which roff
+  does not honour — and macro arguments are quoted, without escaping hyphens,
+  because an escaped hyphen in a date is a date no formatter can parse. Tests hand
+  every page to `mandoc -T lint` and read the parse tree back, which is what caught
+  two defects in the first draft: footers truncated at the space in `kroot 1.2.3`,
+  and an `.SH` injected by a command summary becoming a real heading. Additive, so
+  a MINOR under the versioning policy.
+- `internal/cli`: `Program.Flags` (a rendering function) is replaced by
+  `Program.FlagSet`, holding the flag set itself. Help still renders through
+  `PrintFlags`, and the manual can now walk the set to typeset each flag's name and
+  description separately, which a pre-rendered help block cannot provide. The
+  indirection it replaced was already redundant — `PrintFlags` renders only when
+  called — so nothing about the two renderers changed. No behaviour change.
 - `kroot completion <bash|fish|zsh>` writes a shell completion script to stdout.
   The script completes subcommand names in the first operand position and nothing
   else, because that is the only position where a subcommand is a valid answer;

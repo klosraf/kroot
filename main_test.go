@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -81,6 +82,26 @@ func TestRun(t *testing.T) {
 		{
 			name:    "completion with an unknown shell is a usage error",
 			args:    []string{"completion", "tcsh"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:       "man prints the program page",
+			args:       []string{"man"},
+			wantOutput: ".SH",
+		},
+		{
+			name:       "man for one command prints that page",
+			args:       []string{"man", "version"},
+			wantOutput: `KROOT-VERSION`,
+		},
+		{
+			name:    "man with an unknown command is a usage error",
+			args:    []string{"man", "versioo"},
+			wantErr: cli.ErrUnknownCommand,
+		},
+		{
+			name:    "man with too many commands is a usage error",
+			args:    []string{"man", "version", "help"},
 			wantErr: cli.ErrUsage,
 		},
 	}
@@ -465,6 +486,10 @@ func TestCompletionExitCodesMatchTheDocumentedContract(t *testing.T) {
 		{name: "no shell is a usage error", args: []string{"completion"}, want: exitUsage},
 		{name: "unknown shell is a usage error", args: []string{"completion", "tcsh"}, want: exitUsage},
 		{name: "too many shells is a usage error", args: []string{"completion", "bash", "zsh"}, want: exitUsage},
+		{name: "man succeeds", args: []string{"man"}, want: exitSuccess},
+		{name: "man for a command succeeds", args: []string{"man", "version"}, want: exitSuccess},
+		{name: "man for an unknown command is a usage error", args: []string{"man", "versioo"}, want: exitUsage},
+		{name: "man with too many commands is a usage error", args: []string{"man", "version", "help"}, want: exitUsage},
 	}
 
 	for _, tc := range tests {
@@ -475,6 +500,117 @@ func TestCompletionExitCodesMatchTheDocumentedContract(t *testing.T) {
 				t.Errorf("exitCodeFor(run(%v)) = %d; want %d", tc.args, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestManualPageReachesStdoutAndNothingElse covers the stream half of the
+// contract. The page is what the caller asked for, so it belongs on stdout with
+// stderr empty — otherwise `kroot man | man -l -` pipes a diagnostic into the
+// formatter instead of a page.
+func TestManualPageReachesStdoutAndNothingElse(t *testing.T) {
+	for _, args := range [][]string{{"man"}, {"man", "version"}, {"man", "completion"}} {
+		t.Run(strings.Join(append([]string{"man"}, args[1:]...), " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			if err := run(context.Background(), args, &stdout, &stderr); err != nil {
+				t.Fatalf("run(%v) error = %v; want nil", args, err)
+			}
+			if got := stdout.String(); strings.TrimSpace(got) == "" {
+				t.Errorf("stdout is empty; want the page for %v", args)
+			}
+			if got := stderr.String(); got != "" {
+				t.Errorf("stderr = %q; want it empty: the page is requested output, not a diagnostic", got)
+			}
+		})
+	}
+}
+
+// TestManualPageDocumentsEveryRegisteredCommand is the guarantee that makes the
+// manual worth generating rather than writing by hand: the page is derived from
+// the registry, so a command cannot be reachable but undocumented. It is also
+// what lets api-compatibility.md treat "documented in the manual" as a real
+// precondition for the v1.0.0 stability promise.
+func TestManualPageDocumentsEveryRegisteredCommand(t *testing.T) {
+	program, err := newProgram(flag.NewFlagSet("kroot", flag.ContinueOnError))
+	if err != nil {
+		t.Fatalf("newProgram() error = %v; want nil", err)
+	}
+
+	var stdout bytes.Buffer
+	if err := run(context.Background(), []string{"man"}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run(man) error = %v; want nil", err)
+	}
+
+	page := stdout.String()
+	for _, c := range program.Commands.Commands() {
+		if !strings.Contains(page, c.Name) {
+			t.Errorf("manual page omits command %q", c.Name)
+		}
+	}
+}
+
+// TestManualPageCarriesTheExitContract asserts the page documents the same exit
+// codes the process returns. The codes are passed in from main rather than
+// restated in the generator, so this checks the wiring rather than a copy — a
+// manual that disagrees with the binary about its exit codes is worse than none.
+func TestManualPageCarriesTheExitContract(t *testing.T) {
+	var stdout bytes.Buffer
+
+	if err := run(context.Background(), []string{"man"}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run(man) error = %v; want nil", err)
+	}
+
+	page := stdout.String()
+	for _, want := range []string{
+		"EXIT STATUS",
+		fmt.Sprintf("%d", exitSuccess),
+		fmt.Sprintf("%d", exitFailure),
+		fmt.Sprintf("%d", exitUsage),
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("manual page does not contain %q; the exit contract must match what the process returns:\n%s", want, page)
+		}
+	}
+}
+
+// TestManualDateFallsBackHonestly covers both branches of the page date. A
+// release build gets a formatted date a formatter can parse; a plain `go build`
+// has no build time, and inventing a plausible date would be a lie in a document
+// whose whole purpose is to be checked against the binary it came from.
+func TestManualDateFallsBackHonestly(t *testing.T) {
+	previous := buildTime
+	t.Cleanup(func() { buildTime = previous })
+
+	t.Run("a timestamp becomes a plain date", func(t *testing.T) {
+		buildTime = "2026-09-27T08:24:44Z"
+		if got, want := manualDate(), "2026-09-27"; got != want {
+			t.Errorf("manualDate() = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("an unknown build time is shown, not invented", func(t *testing.T) {
+		buildTime = "unknown"
+		if got := manualDate(); got != "unknown" {
+			t.Errorf("manualDate() = %q; want %q", got, "unknown")
+		}
+	})
+}
+
+// TestHelpForManNamesTheUsage covers discoverability: the long text tells a
+// reader how to get a page into a viewer, which is the one thing the command
+// cannot do on its own.
+func TestHelpForManNamesTheUsage(t *testing.T) {
+	var stdout bytes.Buffer
+
+	if err := run(context.Background(), []string{"help", "man"}, &stdout, io.Discard); err != nil {
+		t.Fatalf("run(help man) error = %v; want nil", err)
+	}
+
+	got := stdout.String()
+	for _, want := range []string{"kroot man [command]", "man -l -"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("help for man = %q; want it to contain %q", got, want)
+		}
 	}
 }
 
