@@ -13,6 +13,12 @@ Kroot is a **full-stack product**:
 - **Frontend** — TypeScript + React, added under `web/` when the first UI
   milestone lands.
 
+The product type is a **terminal-first CLI application**
+([ADR-0003](./docs/adr/0003-cli-first-terminal-application.md)): the `kroot`
+binary and its caller contract are the deliverable. A server mode and a
+frontend both remain possible; neither exists, and each arrives under its own
+ADR.
+
 Everything that ships from this repository is typed, tested, observable, secure
 and reproducible. "It works on my machine" is not a delivery standard.
 
@@ -25,6 +31,7 @@ and reproducible. "It works on my machine" is not a delivery standard.
 | UI framework | React 18 + Vite + Tailwind CSS | **frozen** |
 | JS package manager | pnpm (never npm/yarn) | **frozen** |
 | Documentation | Markdown under `docs/` | **frozen** |
+| Project type | terminal-first CLI (ADR-0003) | **decided** |
 | HTTP layer | Go standard library first | to decide (ADR) |
 | Persistence | none yet | to decide (ADR) |
 

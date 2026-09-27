@@ -2,13 +2,15 @@
 
 <!-- One-line description of what kroot does. -->
 
-Kroot is a full-stack product built to enterprise standards: a Go backend
-(implemented here, in the Go modules below) with a TypeScript + React frontend
-added under `web/` when the first UI milestone lands.
+Kroot is a terminal-first CLI application — decided in
+[`docs/adr/0003-cli-first-terminal-application.md`](./docs/adr/0003-cli-first-terminal-application.md),
+built on the Go standard library, with the `kroot` binary and its caller contract
+as the deliverable. A server mode and a TypeScript + React frontend under `web/`
+both remain possible; neither exists, and each would arrive under its own ADR.
 
-The project type and the HTTP/persistence layers are deliberately still open.
-The engineering standards that govern *how* those decisions are made are not —
-see [`AGENTS.md`](./AGENTS.md).
+The HTTP and persistence layers are deliberately still open. The engineering
+standards that govern *how* those decisions are made are not — see
+[`AGENTS.md`](./AGENTS.md).
 
 ## Start here
 
@@ -72,6 +74,26 @@ Version, commit and build time are injected at link time by `make build` and are
 injected: it comes from the runtime, so the binary always names the compiler that
 produced it. See
 [`docs/enterprise/versioning-policy.md`](./docs/enterprise/versioning-policy.md).
+
+## Configuration
+
+Configuration arrives through `KROOT_*` environment variables. The first one:
+
+| Variable | Default | Accepted values |
+|---|---|---|
+| `KROOT_LOG_LEVEL` | `info` (when unset) | `debug`, `info`, `warn`, `error` |
+
+```sh
+$ KROOT_LOG_LEVEL=debug kroot version    # detail on stderr, output unchanged on stdout
+$ KROOT_LOG_LEVEL=verbose kroot version  # rejected: exit 1, reason on stderr
+```
+
+An unknown value stops the process before any command runs: stderr says
+`configuration rejected`, and the exit code is `1`. Logs always go to stderr —
+stdout stays reserved for what the caller asked for, in human-readable form on a
+terminal and JSON when redirected. See
+[`docs/enterprise/observability.md`](./docs/enterprise/observability.md) and
+[`docs/enterprise/api-compatibility.md`](./docs/enterprise/api-compatibility.md).
 
 ## Layout
 

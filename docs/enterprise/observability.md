@@ -3,13 +3,23 @@
 ## Logs
 
 - Structured logging via the standard library `log/slog`. No `fmt.Println` in
-  library code; `main` configures the handler once, at startup.
+  library code; `realMain` configures the handler once, before anything can
+  fail, so every later failure is reported by the logger it just built.
 - Levels: `DEBUG` for local development, `INFO` as the production default, `WARN`
   for recoverable anomalies, `ERROR` for failures a human should look at.
-- Level is controlled by `KROOT_LOG_LEVEL` (`debug|info|warn|error`). **Not
-  implemented yet:** no Go file in this repository reads any `KROOT_*` variable,
-  so the level is whatever `slog` defaults to. This is the contract the CLI has to
-  satisfy before an operator can rely on it.
+- Level is controlled by `KROOT_LOG_LEVEL` (`debug|info|warn|error`), defaulting
+  to `info` when unset. An unknown value is **rejected, not coerced**: the
+  process reports `configuration rejected` with the accepted vocabulary on
+  stderr and exits `1` (see `api-compatibility.md` § "Exit codes"). The failure
+  is reported at `ERROR` — no configured level may suppress the record that
+  explains why it was rejected.
+- Encoding follows the destination, not a flag: stderr attached to a terminal
+  gets human-readable text, stderr redirected to a pipe or a file gets JSON. The
+  structured keys are identical either way, and only the encoding is unstabilised
+  by `api-compatibility.md`.
+- No color codes are emitted, so `NO_COLOR` has nothing to disable and is not
+  read. Detection is introduced with the first styled output, not before
+  (`docs/adr/0003-cli-first-terminal-application.md`).
 
 Required keys on every record where they apply:
 
