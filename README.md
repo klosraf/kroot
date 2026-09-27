@@ -45,6 +45,7 @@ make run        # run from source
 | `make help` | list every target |
 | `make build` | compile `bin/kroot` with version, commit and build time injected |
 | `make run` | run from source (`make run ARGS="version"`) |
+| `make package` | build the release artefacts into `dist/` (`make package PACKAGE_VERSION=0.2.0-rc.1`) |
 | `make fmt` | format sources in place |
 | `make fmt-check` | fail if anything is unformatted |
 | `make vet` | `go vet ./...` |
