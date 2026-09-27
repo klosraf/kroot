@@ -17,9 +17,16 @@ concurrency:
 env:
   # Pinned to the version in go.mod so CI and local runs agree.
   GO_VERSION: "1.23.12"
+  # Declared, never inherited. `setup-go` v6+ exports this as `local`, but stating
+  # it here keeps the guarantee independent of that action's major version, and it
+  # is what makes a dependency requiring a newer Go fail loudly instead of
+  # silently pulling a toolchain this repository never declares.
+  GOTOOLCHAIN: "local"
   # Pinned to the version in the Makefile (see docs/adr/0001-adopt-enterprise-charter.md).
   GOLANGCI_VERSION: v2.14.0
-  GOVULN_VERSION: v1.8.0
+  # x/vuln v1.2.0 and later require Go >= 1.25, and v1.8.0 requires Go >= 1.26;
+  # this module is pinned to Go 1.23.12, so the scanner is the newest buildable release.
+  GOVULN_VERSION: v1.1.4
   NODE_VERSION: "22"
 
 jobs:

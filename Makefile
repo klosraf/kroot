@@ -9,9 +9,19 @@ LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.bu
 
 # Pinned so that local runs and CI cannot drift apart (see docs/adr/0001-adopt-enterprise-charter.md).
 GOLANGCI_VERSION := v2.14.0
-GOVULN_VERSION   := v1.8.0
+# x/vuln v1.2.0 and later declare `go 1.25.0`, and v1.8.0 declares `go 1.26.0`.
+# This module is pinned to Go 1.23.12, so the scanner is pinned to the newest
+# release that still builds with the toolchain the project declares.
+GOVULN_VERSION   := v1.1.4
 GOLANGCI         := $(BIN_DIR)/golangci-lint
 GOVULNCHECK      := $(BIN_DIR)/govulncheck
+
+# Declared, never inherited. With the default GOTOOLCHAIN=auto, Go silently
+# downloads whichever toolchain a dependency asks for: the scanner was built by
+# Go 1.26.8 while the project declares Go 1.23.12, so the version that actually
+# ran the gate appeared nowhere in the repository. Pinning it to `local` turns
+# that drift into a loud failure and keeps make and CI on one compiler.
+export GOTOOLCHAIN := local
 
 .DEFAULT_GOAL := help
 
