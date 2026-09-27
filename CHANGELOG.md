@@ -9,6 +9,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `kroot version` reports the Go toolchain that built the binary, so the compiler
+  is visible beside the revision it produced:
+  `kroot dev (commit none, built unknown, go1.23.12)`.
+  `docs/enterprise/versioning-policy.md` has always documented that field and the
+  binary never printed it, which made that document's example output something
+  the program cannot produce. The value comes from the runtime rather than from
+  `-ldflags`, so it cannot drift from what actually compiled the binary — the same
+  class of drift that let the pinned vulnerability scanner be built by an
+  undeclared Go version.
 - Initial module `github.com/klosraf/kroot` (Go 1.23.12).
 - CLI entry point with `help` and `version` commands, plus `--version`.
 - Build metadata (`version`, `commit`, `buildTime`) injected at link time and

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -206,6 +207,7 @@ func TestVersionReportsBuildMetadata(t *testing.T) {
 		"version":   version,
 		"commit":    commit,
 		"buildTime": buildTime,
+		"toolchain": runtime.Version(),
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("printVersion() output = %q; want it to contain %s %q", got, name, want)
