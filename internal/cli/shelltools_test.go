@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -49,14 +51,36 @@ func requireTool(t *testing.T, name string) {
 // file to catch a string that no compiler can check. This mismatch did occur while
 // writing the change, which is how the test came to exist.
 func TestRequireShellToolsEnvNameIsWired(t *testing.T) {
-	workflow, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "ci.yaml"))
+	workflow, err := readRepoFile(".github", "workflows", "ci.yaml")
 	if err != nil {
 		t.Fatalf("read ci.yaml: %v", err)
 	}
 
-	if !strings.Contains(string(workflow), requireShellToolsEnv+":") {
+	if !strings.Contains(workflow, requireShellToolsEnv+":") {
 		t.Errorf("ci.yaml does not set %s; requireTool would skip in CI instead of failing, and the roff and shell validation would stop being enforced", requireShellToolsEnv)
 	}
+}
+
+// readRepoFile reads a file addressed from the repository root.
+//
+// The path is derived from this source file's own location rather than from the
+// working directory, which `go test` sets to the package directory but which
+// anything running the compiled test binary need not. A relative "../../" path
+// passes under `go test` and fails the moment the binary is run from elsewhere,
+// which is a test that only works in the one way it is normally used.
+func readRepoFile(parts ...string) (string, error) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", errors.New("cannot determine this source file's path")
+	}
+
+	// This file is <root>/internal/cli/shelltools_test.go.
+	root := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	b, err := os.ReadFile(filepath.Join(append([]string{root}, parts...)...))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // TestRequireToolSkipsWhenTheToolIsAbsent pins the developer-facing half of the
@@ -65,6 +89,12 @@ func TestRequireShellToolsEnvNameIsWired(t *testing.T) {
 // code. The failing half is exercised by running the compiled suite with the
 // variable set and the tool removed from PATH, which is what CI does.
 func TestRequireToolSkipsWhenTheToolIsAbsent(t *testing.T) {
+	// The variable is cleared explicitly rather than assumed unset. CI sets it,
+	// and without this the test would exercise the *failing* path there and fail
+	// in the one environment it is meant to describe the other half of — which is
+	// what the first run of this change did.
+	t.Setenv(requireShellToolsEnv, "")
+
 	t.Run("absent tool skips", func(t *testing.T) {
 		// A name that cannot resolve, standing in for mandoc on a machine without it.
 		requireTool(t, "kroot-no-such-tool-for-testing")

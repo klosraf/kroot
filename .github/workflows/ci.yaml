@@ -85,17 +85,22 @@ jobs:
       # The package is pinned to the version Ubuntu ships rather than "latest", so
       # a formatter change cannot turn a passing page into a failing one, or the
       # reverse, without a visible change to this file.
-      - name: Install mandoc
+      # mandoc and zsh validate the generated manual pages and completion scripts
+      # by handing them to the tools that will consume them. Neither is installed
+      # on ubuntu-latest by default, so without this the roff and shell validation
+      # would skip on every pull request while the check list still reported them
+      # as covered. bash needs no entry: it is present in the image already.
+      - name: Install mandoc and zsh
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends mandoc
-          # `command -v` rather than `mandoc -V`: the version flag is not
-          # portable across mandoc builds — Ubuntu's 1.14.6 prints its usage and
-          # exits 5 for `-V`, which reads as a broken install. Presence is all
-          # that is being asserted, and the tests fail on their own if the tool is
-          # unusable.
+          sudo apt-get install --yes --no-install-recommends mandoc zsh
+          # `command -v` rather than a version flag: `-V` is not portable across
+          # mandoc builds — Ubuntu's 1.14.6 prints its usage and exits 5 for it,
+          # which reads as a broken install. Presence is all this asserts, and the
+          # tests fail on their own if a tool is present but unusable.
           command -v mandoc
+          command -v zsh
 
       - name: Key build files are under version control
         run: |
