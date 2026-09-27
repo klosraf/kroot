@@ -45,6 +45,36 @@ func TestRun(t *testing.T) {
 			wantOutput: "kroot " + version,
 		},
 		{
+			name:       "the program's own -h prints the program's help",
+			args:       []string{"-h"},
+			wantOutput: "Usage:\n  kroot [flags] <command>",
+		},
+		{
+			name:       "version -h prints that command's help",
+			args:       []string{"version", "-h"},
+			wantOutput: "Usage:\n  kroot version",
+		},
+		{
+			name:       "completion --help prints that command's help",
+			args:       []string{"completion", "--help"},
+			wantOutput: "Usage:\n  kroot completion <",
+		},
+		{
+			name:       "help --help prints the help command's own help",
+			args:       []string{"help", "--help"},
+			wantOutput: "Usage:\n  kroot help [command]",
+		},
+		{
+			name:       "the help operand wins over what follows it",
+			args:       []string{"version", "--help", "extra"},
+			wantOutput: "Usage:\n  kroot version",
+		},
+		{
+			name:    "the help operand after a surplus operand is data, not a rescue",
+			args:    []string{"version", "extra", "--help"},
+			wantErr: cli.ErrUsage,
+		},
+		{
 			name:       "help for one command prints that command's usage",
 			args:       []string{"help", "version"},
 			wantOutput: "Usage:\n  kroot version",
@@ -65,9 +95,17 @@ func TestRun(t *testing.T) {
 			wantErr: cli.ErrUnknownCommand,
 		},
 		{
-			name:       "completion prints a script on stdout",
-			args:       []string{"completion", "bash"},
-			wantOutput: "complete -o default -F _kroot_completions kroot",
+			name: "completion prints a script on stdout",
+			args: []string{"completion", "bash"},
+			// The function name rather than the whole registration line. The
+			// options that line carries belong to the generator, and the cli
+			// package already asserts them exactly, in
+			// TestWriteCompletionRendersEveryShell and
+			// TestNoShellFallsBackToFilenamesAfterADeclinedPosition. Repeating
+			// the line here would tie this table to generator options without
+			// adding a guarantee, and would make the two packages fail together
+			// when only one of them is wrong.
+			wantOutput: "_kroot_completions",
 		},
 		{
 			name:    "completion without a shell is a usage error",
@@ -417,6 +455,108 @@ func TestCompletionScriptNamesEveryRegisteredCommand(t *testing.T) {
 	}
 }
 
+// surfaceCase is one complete byte stream a caller can ask for. The guards below
+// sweep every case rather than a sample, because a surface nobody enumerated is a
+// surface the guard does not cover.
+type surfaceCase struct {
+	name string
+	args []string
+}
+
+// allSurfaceCases lists every output the binary can produce: the general help, the
+// help and the manual page of every registered command, and every completion script.
+// The program is built the way run() builds it, so the list comes from the registry
+// rather than from a hard-coded copy that a new command would miss.
+func allSurfaceCases(t *testing.T) []surfaceCase {
+	t.Helper()
+
+	program, err := newProgram(flag.NewFlagSet("kroot", flag.ContinueOnError))
+	if err != nil {
+		t.Fatalf("newProgram() error = %v; want nil", err)
+	}
+
+	commands := program.Commands.Commands()
+	cases := make([]surfaceCase, 0, 2+2*len(commands)+len(cli.Shells))
+	cases = append(cases,
+		surfaceCase{name: "general help"},
+		surfaceCase{name: "manual, program page", args: []string{"man"}},
+	)
+	for _, c := range commands {
+		cases = append(cases,
+			surfaceCase{name: "help " + c.Name, args: []string{"help", c.Name}},
+			surfaceCase{name: "manual, " + c.Name, args: []string{"man", c.Name}},
+		)
+	}
+	for _, shell := range cli.Shells {
+		cases = append(cases, surfaceCase{name: "completion " + shell, args: []string{"completion", shell}})
+	}
+	return cases
+}
+
+// renderSurface runs the binary's own dispatch and returns what reached stdout.
+func renderSurface(t *testing.T, args []string) string {
+	t.Helper()
+
+	var out bytes.Buffer
+	if err := run(context.Background(), args, &out, io.Discard); err != nil {
+		t.Fatalf("run(%v) error = %v; want nil", args, err)
+	}
+	return out.String()
+}
+
+// TestNoSurfaceEmitsAnEscapeSequence is the accessibility guard: these bytes may not
+// depend on a capability the destination might not have. A screen reader, a pipe and
+// a log file receive exactly what is asserted here, and an escape byte in any of them
+// is invisible to the author who wrote it and disruptive to the reader who did not.
+// It costs nothing to assert, and it makes a spinner or a checkmark impossible to add
+// unnoticed — which is the only way a rule like "no colour" survives contact with a
+// deadline.
+func TestNoSurfaceEmitsAnEscapeSequence(t *testing.T) {
+	for _, tc := range allSurfaceCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderSurface(t, tc.args)
+
+			i := strings.IndexByte(got, 0x1b)
+			if i < 0 {
+				return
+			}
+			start, end := max(0, i-40), min(len(got), i+40)
+			t.Errorf("%s emitted an escape byte at offset %d: …%q…", tc.name, i, got[start:end])
+		})
+	}
+}
+
+// TestHumanFacingSurfacesStayWithinTheDesignWidth pins the layout budget: 80 columns
+// for what a person reads in a terminal or in a diff — the help output and the roff
+// source of the manual. Output is ASCII, so bytes are columns and no conversion is
+// needed to measure it.
+//
+// Generated shell scripts are excluded deliberately, and naming the exclusion is the
+// point: they are code a shell parses, not prose read at a terminal, and fish's
+// candidate lines are candidate plus description, which no reflow can shorten
+// without dropping the description a candidate exists to carry. Excluding them in a
+// comment is an exception the reviewer can disagree with; excluding them silently
+// would be a budget that measures nothing.
+func TestHumanFacingSurfacesStayWithinTheDesignWidth(t *testing.T) {
+	const designWidth = 80
+
+	for _, tc := range allSurfaceCases(t) {
+		if strings.HasPrefix(tc.name, "completion ") {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderSurface(t, tc.args)
+
+			for i, line := range strings.Split(got, "\n") {
+				if len(line) > designWidth {
+					t.Errorf("line %d is %d columns, over the design width of %d:\n%s",
+						i+1, len(line), designWidth, line)
+				}
+			}
+		})
+	}
+}
+
 // TestCompletionFailuresNameTheSupportedShells asserts the rejection is
 // actionable on its own. A caller who typed "kroot completion bas" learns the
 // answer from the error — both the vocabulary and the near miss — without
@@ -753,6 +893,24 @@ func TestRealMainFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	}
 	if got := stdout.String(); got != "" {
 		t.Errorf("stdout = %q; want it empty: nothing ran", got)
+	}
+}
+
+// BenchmarkRunVersion measures the cheapest complete invocation a caller can make —
+// flag handling, configuration parsing, dispatch and the write — inside the process.
+//
+// It is deliberately not a spawn benchmark. Process startup (fork, exec, dynamic
+// loading) is the operating system's cost and moves with the machine, so folding it
+// into one number would produce a figure no code change could ever move, which is a
+// budget that measures noise. What this benchmark can regress on is what the code
+// owns, and that is what a budget attached to it guards. The process-level cost is
+// measured separately against the built binary and recorded next to it.
+func BenchmarkRunVersion(b *testing.B) {
+	for range b.N {
+		var out bytes.Buffer
+		if err := run(context.Background(), []string{"version"}, &out, io.Discard); err != nil {
+			b.Fatalf("run(version) error = %v; want nil", err)
+		}
 	}
 }
 
