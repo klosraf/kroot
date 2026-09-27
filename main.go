@@ -245,6 +245,17 @@ func newProgram(fs *flag.FlagSet) (*cli.Program, error) {
 
 	registry, err := cli.New(
 		cli.Command{
+			Name:    "completion",
+			Summary: "print a shell completion script",
+			Usage:   "kroot completion <" + strings.Join(cli.Shells, "|") + ">",
+			Long: "Print the completion script for one shell on standard output, ready to install.\n\n" +
+				"The command list is written into the script, so regenerate it after upgrading kroot:\n\n" +
+				"  kroot completion " + strings.Join(cli.Shells, "|") + " > <path>",
+			Run: func(_ context.Context, env cli.Env) error {
+				return runCompletion(program, env)
+			},
+		},
+		cli.Command{
 			Name:    "help",
 			Summary: "print this help, or the help of one command",
 			Usage:   "kroot help [command]",
@@ -296,6 +307,37 @@ func runHelp(program *cli.Program, env cli.Env) error {
 
 	_ = program.CommandHelp(env.Stdout, command)
 	return nil
+}
+
+// runCompletion implements the completion command.
+//
+// The script is what the caller asked for, so it goes to stdout and can be
+// installed by redirecting: `kroot completion zsh > _kroot`. Both arity failures
+// are returned rather than papered over — a missing or extra shell name is
+// actionable by reinvoking, which is exactly what api-compatibility.md ties to
+// exit code 2, and a bare "usage error" with no vocabulary would send the
+// reader to the manual for something the error can answer.
+func runCompletion(program *cli.Program, env cli.Env) error {
+	shells := strings.Join(cli.Shells, "|")
+
+	switch {
+	case len(env.Args) == 0:
+		return fmt.Errorf("%w: completion needs a shell: want one of %s", cli.ErrUsage, shells)
+	case len(env.Args) > 1:
+		return fmt.Errorf("%w: completion takes one shell, got %d: want one of %s", cli.ErrUsage, len(env.Args), shells)
+	}
+
+	// The registry is the single source of truth for what can be typed, so the
+	// script cannot offer a command that does not exist or miss one that does.
+	// Commands() is sorted, which is what makes the generated file stable
+	// across regenerations and reviewable as a diff.
+	commands := program.Commands.Commands()
+	entries := make([]cli.Entry, 0, len(commands))
+	for _, c := range commands {
+		entries = append(entries, cli.Entry{Name: c.Name, Summary: c.Summary})
+	}
+
+	return cli.WriteCompletion(env.Stdout, env.Args[0], program.Name, entries)
 }
 
 // printVersion writes the application version and its build metadata to out.

@@ -75,6 +75,29 @@ injected: it comes from the runtime, so the binary always names the compiler tha
 produced it. See
 [`docs/enterprise/versioning-policy.md`](./docs/enterprise/versioning-policy.md).
 
+## Shell completion
+
+`kroot completion <bash|fish|zsh>` writes a completion script to standard output.
+It completes subcommand names, and only in the first operand position — the one
+place a subcommand is a valid answer.
+
+```sh
+# bash, system-wide (needs root)
+$ kroot completion bash > /etc/bash_completion.d/kroot
+
+# zsh, per user
+$ kroot completion zsh > "${fpath[1]}/_kroot"
+
+# fish
+$ kroot completion fish > ~/.config/fish/completions/kroot.fish
+```
+
+The command list is written into the script, so **regenerate it after upgrading
+kroot** or a newly added command will not appear. Every generated file says so in
+its own header. An unsupported shell is rejected with the accepted list and, for a
+near miss, a suggestion — `kroot completion bas` answers `did you mean "bash"?`
+and exits `2`.
+
 ## Configuration
 
 Configuration arrives through `KROOT_*` environment variables. The first one:
