@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime"
 )
 
 // Build metadata. All three values are injected at link time:
@@ -128,8 +129,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 // printVersion writes the application version and its build metadata to out.
+//
+// The toolchain comes from the runtime rather than from -ldflags, so it always
+// names the compiler that actually produced this binary. Reporting the revision
+// without the compiler would repeat the blind spot that let a pinned dev tool be
+// silently built by an undeclared Go version: an artifact that says where it came
+// from but not what made it. See docs/enterprise/versioning-policy.md § "Build
+// metadata".
 func printVersion(out io.Writer) error {
-	if _, err := fmt.Fprintf(out, "kroot %s (commit %s, built %s)\n", version, commit, buildTime); err != nil {
+	if _, err := fmt.Fprintf(out, "kroot %s (commit %s, built %s, %s)\n", version, commit, buildTime, runtime.Version()); err != nil {
 		return fmt.Errorf("writing version: %w", err)
 	}
 	return nil

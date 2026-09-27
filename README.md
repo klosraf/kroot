@@ -60,7 +60,7 @@ make run        # run from source
 
 ```sh
 $ kroot version
-kroot dev (commit none, built unknown)
+kroot dev (commit none, built unknown, go1.23.12)
 
 $ kroot help
 kroot - application skeleton
@@ -68,7 +68,9 @@ kroot - application skeleton
 ```
 
 Version, commit and build time are injected at link time by `make build` and are
-`dev` / `none` / `unknown` for a plain `go run .`. See
+`dev` / `none` / `unknown` for a plain `go run .`. The Go toolchain is not
+injected: it comes from the runtime, so the binary always names the compiler that
+produced it. See
 [`docs/enterprise/versioning-policy.md`](./docs/enterprise/versioning-policy.md).
 
 ## Layout
