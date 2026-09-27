@@ -1,0 +1,57 @@
+# Automated dependency updates.
+#
+# Every ecosystem the repository depends on is watched weekly. Dependabot pull
+# requests are excluded from the commit-message gate in ci.yaml because the bot
+# generates sentence-case subjects that the Conventional Commits rule rejects.
+#
+# See docs/enterprise/security-policy.md (T5: dependency compromise).
+
+version: 2
+
+updates:
+  # Go modules.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Phoenix
+    open-pull-requests-limit: 5
+    commit-message:
+      # "build" is an allowed Conventional Commits type, so the generated
+      # message still satisfies commitlint.config.mjs.
+      prefix: "build(deps)"
+    labels:
+      - dependencies
+      - go
+
+  # Repository tooling (commitlint).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Phoenix
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps-dev)"
+    labels:
+      - dependencies
+      - javascript
+
+  # GitHub Actions used by the CI workflow.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Phoenix
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - dependencies
+      - ci

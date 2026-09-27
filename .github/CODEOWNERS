@@ -1,0 +1,19 @@
+# Code owners.
+#
+# Ownership is declarative: a pull request touching these paths requests a
+# review from the owners below. See docs/enterprise/branching-strategy.md.
+#
+# The last matching pattern wins, so the specific rules come after the default.
+
+# Default owner for everything in the repository.
+* @klosraf
+
+# Security and release surface: always reviewed by the owner.
+/SECURITY.md         @klosraf
+/LICENSE             @klosraf
+/go.mod              @klosraf
+/go.sum              @klosraf
+/docs/enterprise/    @klosraf
+/docs/adr/           @klosraf
+/.github/            @klosraf
+/Makefile            @klosraf

@@ -1,0 +1,26 @@
+# Normalise line endings repository-wide, independently of the platform a
+# contributor uses. .editorconfig handles editor behaviour; this file handles
+# what git stores.
+* text=auto eol=lf
+
+# Shell scripts must keep LF even where the checkout is on Windows.
+*.sh text eol=lf
+
+# Binary types, listed explicitly so git never guesses wrong.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.svg   text
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+
+# Generated lockfiles: excluded from language statistics and folded away in
+# review, since they are machine-written and their diffs are not read by humans.
+pnpm-lock.yaml linguist-generated
