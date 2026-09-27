@@ -36,6 +36,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Module path corrected from `github.com/kroot/kroot` to
   `github.com/klosraf/kroot`, matching the GitHub account that owns the
   repository.
+- `docs/enterprise/branching-strategy.md` now documents the branch protection
+  actually applied to `main`, including why the required approval count is 0
+  while the repository has a single maintainer.
 
 ### Fixed
 
