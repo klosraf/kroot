@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -14,11 +15,16 @@ import (
 // testEntries is a small command set used across the tests. The order is
 // deliberately not the sorted order, so a test that passes cannot be passing
 // because the input was already in output order.
+//
+// The operands mirror the real program on purpose: `completion` takes a shell and
+// `help` takes a command name, while `version` takes nothing. A test set that
+// declared none of them would prove the templates render, not that they offer the
+// values a caller can actually use.
 func testEntries() []Entry {
 	return []Entry{
 		{Name: "version", Summary: "print the version and exit"},
-		{Name: "completion", Summary: "print a shell completion script"},
-		{Name: "help", Summary: "print this help, or the help of one command"},
+		{Name: "completion", Summary: "print a shell completion script", Operands: Operands{Values: Shells}},
+		{Name: "help", Summary: "print this help, or the help of one command", Operands: Operands{CommandNames: true}},
 	}
 }
 
@@ -42,7 +48,7 @@ func TestWriteCompletionRendersEveryShell(t *testing.T) {
 		shell  string
 		marker string
 	}{
-		{shell: "bash", marker: "complete -o default -F _kroot_completions kroot"},
+		{shell: "bash", marker: "complete -F _kroot_completions kroot"},
 		{shell: "fish", marker: "complete -c kroot -f"},
 		{shell: "zsh", marker: "compdef _kroot_completions kroot"},
 	}
@@ -242,7 +248,11 @@ func TestWriteCompletionSortsWithoutTouchingTheCaller(t *testing.T) {
 		t.Errorf("bash script does not list the commands in name order:\n%s", script)
 	}
 	for i := range entries {
-		if entries[i] != before[i] {
+		// Deep equality rather than ==, because Entry now carries a vocabulary
+		// slice and a struct containing a slice is not comparable. The point of
+		// the assertion is unchanged: this caller's own slice is the one that
+		// has to come back untouched.
+		if !reflect.DeepEqual(entries[i], before[i]) {
 			t.Errorf("WriteCompletion reordered the caller's slice at %d: got %+v, want %+v", i, entries[i], before[i])
 		}
 	}
@@ -344,10 +354,16 @@ func TestZshCompletionRoundTripsAHostileSummary(t *testing.T) {
 	//
 	// print carries -r: without it zsh interprets escape sequences in its
 	// arguments, which would eat the very backslashes this test exists to check.
+	//
+	// CURRENT is set because the script offers the command list in the first
+	// operand position only, and zsh always sets that parameter when it drives a
+	// completion. Leaving it unset would measure the guard rather than the
+	// escaping this test is about.
 	driver := fmt.Sprintf(`
 autoload -Uz compinit && compinit -u -d "$2"
 source "$1"
 _describe() { shift 3; print -r -l -- "${(@P)1}" }
+CURRENT=2
 _%s_completions
 `, functionName("kroot"))
 
@@ -369,6 +385,278 @@ _%s_completions
 	}
 	if !found {
 		t.Errorf("zsh did not read the summary back unchanged.\nwant entry: %q\ngot:\n%s", want, out)
+	}
+}
+
+// TestZshScriptDeclaresItsCompdef is the text-level half of the zsh install
+// contract, and unlike the test below it runs on a machine with no zsh
+// installed.
+//
+// The first line is what compinit reads to decide which command a file
+// completes. Without it the file is never associated with the binary: TAB does
+// nothing at all, and every other line in the script — including the
+// registration at the end — is unreachable, which is exactly what happened while
+// this line was missing. No test could see it, because each one sourced the
+// script rather than installing it the way the generated header documents.
+func TestZshScriptDeclaresItsCompdef(t *testing.T) {
+	script := render(t, "zsh", "kroot", testEntries())
+
+	first, _, _ := strings.Cut(script, "\n")
+	if want := "#compdef kroot"; first != want {
+		t.Errorf("first line = %q; want %q: compinit associates a file with a command through this line, and without it the completion does not exist",
+			first, want)
+	}
+}
+
+// TestZshInstalledCompletionWorksViaCompinit is the end-to-end proof of the
+// install line the generated script documents: the file is written into a
+// directory on fpath under the name that line gives, compinit is run over it,
+// and the completion is then driven the way zsh drives it.
+//
+// Sourcing the file cannot stand in for this. An autoloaded file *is* the
+// function compinit calls, while a sourced one is not, so the two installations
+// run different code — and the one that was broken was the documented one. The
+// assertions are deliberately about what a caller observes: which function is
+// registered for the command, the entries the menu would show, and the position
+// where it shows nothing.
+func TestZshInstalledCompletionWorksViaCompinit(t *testing.T) {
+	requireTool(t, "zsh")
+
+	dir := t.TempDir()
+	install := filepath.Join(dir, "_kroot")
+	if err := os.WriteFile(install, []byte(render(t, "zsh", "kroot", testEntries())), 0o600); err != nil {
+		t.Fatalf("install the generated script: %v", err)
+	}
+
+	// One key=value line per fact, the shape the bash driver uses.
+	//
+	// _describe is intercepted because the real one needs a live completion
+	// context, and $(...) captures the completion's own stdout.
+	//
+	// probe states what zsh states when it drives a completion: CURRENT, the word
+	// being completed, and words, the line so far. Both are set inside a function
+	// and read by the completion function called from it, which works because zsh
+	// scopes parameters dynamically — the same visibility a real completion has.
+	//
+	// The probe calls the autoloaded function itself, not the helper the file
+	// defines. That is what compinit calls, and the distinction is real: the helper
+	// exists as a global only when the file was sourced, so driving it directly
+	// would test a function this installation path never creates.
+	driver := fmt.Sprintf(`
+fpath=($1 $fpath)
+autoload -Uz compinit && compinit -u -d "$2" >/dev/null
+echo "registered=${_comps[kroot]}"
+_describe() { shift 3; print -r -- "${(@P)1}" }
+probe() {
+  local current=$1
+  shift
+  words=("$@")
+  CURRENT=$current
+  _%s
+}
+echo "first=$(probe 2 kroot '')"
+echo "shells=$(probe 3 kroot completion '')"
+echo "cmdname=$(probe 3 kroot help '')"
+echo "noop=$(probe 3 kroot version '')"
+echo "third=$(probe 4 kroot help version '')"
+`, functionName("kroot"))
+
+	out, err := runShell(t, "zsh", "-f", "-c", driver, "zsh-probe", dir, filepath.Join(dir, "zcompdump"))
+	if err != nil {
+		t.Fatalf("zsh driver failed: %v\n%s", err, out)
+	}
+	got := parseKeyValues(out)
+
+	if got["registered"] != "_kroot" {
+		t.Errorf("compinit registered %q for kroot; want %q: the documented install path is what names the function",
+			got["registered"], "_kroot")
+	}
+
+	// The comparison is against the generated entries rather than a hard-coded
+	// list, so a renamed command cannot leave this test asserting the old name.
+	for _, e := range testEntries() {
+		if want := e.Name + ":" + e.Summary; !strings.Contains(got["first"], want) {
+			t.Errorf("the menu offered %q; want it to contain %q with its description", got["first"], want)
+		}
+	}
+
+	// The second position offers exactly what the typed subcommand accepts: a
+	// closed vocabulary after completion, the command names after help, nothing
+	// after a command that takes no operand, and nothing at any later position.
+	for key, want := range map[string]string{
+		"shells":  strings.Join(Shells, " "),
+		"cmdname": "completion help version",
+		"noop":    "",
+		"third":   "",
+	} {
+		value, ok := got[key]
+		if !ok {
+			t.Errorf("driver did not report %q:\n%s", key, out)
+			continue
+		}
+		if value != want {
+			t.Errorf("%s = %q; want %q", key, value, want)
+		}
+	}
+}
+
+// TestFishScriptCarriesTheOperandVocabulary asserts the one shell this suite cannot
+// drive still receives the offer, and that the offer is confined to the first
+// operand. fish is not installed on the machines these tests run on, so the
+// behavioural proof that bash and zsh get cannot be written for it; what can be
+// asserted is that the condition and the vocabulary are present, which is what a
+// wrong template would break. The token count in the condition is the part that
+// cannot be taken on faith: without it fish keeps offering shells after the operand
+// that already accepted one.
+func TestFishScriptCarriesTheOperandVocabulary(t *testing.T) {
+	script := render(t, "fish", "kroot", testEntries())
+
+	for _, want := range []string{
+		"-n '__fish_seen_subcommand_from completion; and test (count (commandline -opc)) -eq 2' -a 'bash fish zsh'",
+		"-n '__fish_seen_subcommand_from help; and test (count (commandline -opc)) -eq 2' -a 'completion help version'",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("fish script does not carry %q:\n%s", want, script)
+		}
+	}
+
+	// version declares no operand, so no line may offer one after it. A line that
+	// did would be offering values a command cannot accept.
+	if strings.Contains(script, "seen_subcommand_from version") {
+		t.Errorf("fish script offers an operand for a command that declares none:\n%s", script)
+	}
+}
+
+// TestNoShellFallsBackToFilenamesAfterADeclinedPosition settles what the three
+// shells do with a position they decline, which was the last thing they disagreed
+// on: bash was registered with -o default and so offered paths, while fish's -f
+// and zsh's no-match offered nothing.
+//
+// kroot takes no file operand anywhere, so a path offered after a rejected word is
+// a suggestion the binary cannot accept. All three therefore decline, and this test
+// holds them to it: the option is absent from the bash script, the suppression is
+// present in the fish one, and zsh has no filename fallback to remove.
+func TestNoShellFallsBackToFilenamesAfterADeclinedPosition(t *testing.T) {
+	// The registration line is the behaviour; the phrase also appears in the
+	// comment explaining why the option is absent, and a test that matched the
+	// bare word would fail on its own documentation.
+	bash := render(t, "bash", "kroot", testEntries())
+	if strings.Contains(bash, "complete -o default") {
+		t.Errorf("bash script still falls back to filename completion:\n%s", bash)
+	}
+
+	fish := render(t, "fish", "kroot", testEntries())
+	if want := "complete -c kroot -f"; !strings.Contains(fish, want) {
+		t.Errorf("fish script does not suppress filename completion (%q):\n%s", want, fish)
+	}
+
+	// zsh has no opt-in to remove: declining means returning no match, which the
+	// template already does past the first operand.
+	if strings.Contains(render(t, "zsh", "kroot", testEntries()), "complete -o default") {
+		t.Error("zsh script gained a filename fallback")
+	}
+}
+
+// TestCommandsSharingAVocabularyShareOneBranch covers the merge: two commands that
+// accept the same values are one branch, not two identical ones. `help` and `man`
+// both take command names in the real program, and a script spelling that out twice
+// is two places to keep in step for a single behaviour.
+//
+// Comparing vocabularies at all only happens on this path, so it is also where a
+// comparison that rejected two equal vocabularies — or accepted two different ones
+// of the same length — would show up. The set below is arranged to make both
+// mistakes possible: `audit` and `config` are the same length and different, while
+// `help` and `man` are identical and long.
+func TestCommandsSharingAVocabularyShareOneBranch(t *testing.T) {
+	entries := []Entry{
+		{Name: "audit", Summary: "s", Operands: Operands{Values: []string{"a", "b"}}},
+		{Name: "completion", Summary: "s", Operands: Operands{Values: Shells}},
+		{Name: "config", Summary: "s", Operands: Operands{Values: []string{"x", "y"}}},
+		{Name: "help", Summary: "s", Operands: Operands{CommandNames: true}},
+		{Name: "man", Summary: "s", Operands: Operands{CommandNames: true}},
+	}
+
+	bash := render(t, "bash", "kroot", entries)
+	if want := "help|man) words_for='audit completion config help man'"; !strings.Contains(bash, want) {
+		t.Errorf("bash script does not share one branch between help and man:\n%s", bash)
+	}
+	// Four vocabularies plus the catch-all, and not one branch per command. The
+	// pattern counts branches only: the template also assigns words_for once
+	// before the case, and counting that would make the total one too high.
+	if got := strings.Count(bash, ") words_for="); got != 5 {
+		t.Errorf("bash script has %d operand branches; want 5: four vocabularies and the catch-all\n%s", got, bash)
+	}
+
+	zsh := render(t, "zsh", "kroot", entries)
+	if want := "operands=('audit' 'completion' 'config' 'help' 'man')"; !strings.Contains(zsh, want) {
+		t.Errorf("zsh script does not offer the shared vocabulary once:\n%s", zsh)
+	}
+}
+
+// TestScriptsWithNoDeclaredOperandsStillGenerate covers the path a command set with
+// no first operand takes: the operand case has no branches, and the scripts must
+// still be valid shell that declines the position rather than mis-offering
+// something.
+//
+// It is also the reason this test exists as a behaviour test rather than a
+// coverage chore. A template that assumed at least one branch would produce a
+// script no shell could parse, and the only programs that hit that path are the
+// ones whose commands take no operands — which is exactly the set a test author
+// reaches for when checking that nothing changed.
+func TestScriptsWithNoDeclaredOperandsStillGenerate(t *testing.T) {
+	entries := []Entry{
+		{Name: "version", Summary: "print the version and exit"},
+		{Name: "status", Summary: "print the status and exit"},
+	}
+
+	for _, shell := range Shells {
+		t.Run(shell, func(t *testing.T) {
+			script := render(t, shell, "kroot", entries)
+
+			for _, unwanted := range []string{"words_for='", "operands=('", "seen_subcommand_from"} {
+				if strings.Contains(script, unwanted) {
+					t.Errorf("%s script offers an operand for a command set that declares none (%q):\n%s",
+						shell, unwanted, script)
+				}
+			}
+
+			// The command list itself must still be there: a generator that
+			// dropped the branches would be correct by accident.
+			if !strings.Contains(script, "version") {
+				t.Errorf("%s script no longer lists the commands:\n%s", shell, script)
+			}
+
+			if shell == "bash" || shell == "zsh" {
+				requireTool(t, shell)
+				path := writeScript(t, shell, script)
+				if out, err := runShell(t, shell, "-n", path); err != nil {
+					t.Errorf("%s rejected a script whose operand case is empty: %v\n%s", shell, err, out)
+				}
+			}
+		})
+	}
+}
+
+// TestAnAddedShellReachesEveryScriptWithoutTouchingATemplate guards the failure
+// this design exists to prevent: a vocabulary written inside a template keeps
+// offering the old set until someone remembers to edit three scripts. The entries
+// carry the vocabulary, so a shell added to it has to appear in all of them, and this
+// fails the moment one template starts carrying its own copy.
+func TestAnAddedShellReachesEveryScriptWithoutTouchingATemplate(t *testing.T) {
+	entries := testEntries()
+	for i := range entries {
+		if entries[i].Name == "completion" {
+			entries[i].Operands.Values = []string{"bash", "elvish", "fish", "zsh"}
+		}
+	}
+
+	for _, shell := range Shells {
+		t.Run(shell, func(t *testing.T) {
+			script := render(t, shell, "kroot", entries)
+			if !strings.Contains(script, "elvish") {
+				t.Errorf("%s script does not offer the added shell:\n%s", shell, script)
+			}
+		})
 	}
 }
 
@@ -443,15 +731,20 @@ _%s_completions_probe() {
   echo "${COMPREPLY[*]-}"
 }
 # Echoing the sourced body proves the function under test is the generated one.
-echo "sourced=$(declare -f _%s_completions | grep -c compgen)"
+echo "offers=$(declare -f _%s_completions | grep -c compgen)"
 echo "all=$(_%s_completions_probe 1 kroot '')"
 echo "h=$(_%s_completions_probe 1 kroot h)"
 echo "ver=$(_%s_completions_probe 1 kroot ver)"
 echo "none=$(_%s_completions_probe 1 kroot zzz)"
-echo "second=$(_%s_completions_probe 2 kroot help '')"
+echo "shells=$(_%s_completions_probe 2 kroot completion '')"
+echo "cmdname=$(_%s_completions_probe 2 kroot help '')"
+echo "cmdsub=$(_%s_completions_probe 2 kroot help c)"
+echo "noop=$(_%s_completions_probe 2 kroot version '')"
+echo "third=$(_%s_completions_probe 3 kroot help version '')"
 `, functionName("kroot"), functionName("kroot"), functionName("kroot"),
 		functionName("kroot"), functionName("kroot"), functionName("kroot"),
-		functionName("kroot"), functionName("kroot"))
+		functionName("kroot"), functionName("kroot"), functionName("kroot"),
+		functionName("kroot"), functionName("kroot"), functionName("kroot"))
 
 	// The script path is passed as an argument rather than interpolated into the
 	// driver, so a path containing a space or a quote cannot alter the program
@@ -463,15 +756,22 @@ echo "second=$(_%s_completions_probe 2 kroot help '')"
 
 	got := parseKeyValues(out)
 	want := map[string]string{
-		// One line of the generated body mentions compgen, so a sourced-and-
-		// intact function reports 1. Anything else means the test exercised
-		// something other than the generated script.
-		"sourced": "1",
-		"all":     "completion help version",
-		"h":       "help",
-		"ver":     "version",
-		"none":    "",
-		"second":  "",
+		// Two positions of the generated body offer values, so two of its lines
+		// mention compgen. A different count means the template changed; a zero
+		// means the test exercised something other than the generated script.
+		"offers": "2",
+		"all":    "completion help version",
+		"h":      "help",
+		"ver":    "version",
+		"none":   "",
+		// The second position offers what the typed subcommand accepts, and
+		// nothing else: a command with no operand, and any position past the
+		// first operand, are both declined.
+		"shells":  "bash fish zsh",
+		"cmdname": "completion help version",
+		"cmdsub":  "completion",
+		"noop":    "",
+		"third":   "",
 	}
 
 	for key, wantValue := range want {

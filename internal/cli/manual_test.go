@@ -100,6 +100,69 @@ func TestProgramPageDocumentsTheWholeSurface(t *testing.T) {
 	}
 }
 
+// TestProgramPageDocumentsTheEnvironment covers the third contract a script
+// author reads the page for, beside the exit codes: the variables the program
+// reads, what each one accepts, and what happens when it is left unset. The
+// vocabulary is passed in from the parser's own slice, so the assertion is about
+// the values and the default rather than about the prose around them.
+//
+// The variable is documented once. A variable is read by the program, not by a
+// command, and repeating it under every command is how two copies start
+// disagreeing.
+func TestProgramPageDocumentsTheEnvironment(t *testing.T) {
+	info := testInfo()
+	info.Env = []EnvVar{
+		{Name: "KROOT_LOG_LEVEL", Default: "info", Values: []string{"debug", "info", "warn", "error"}},
+	}
+
+	got := renderManual(t, manualProgram(t), "", info)
+	for _, want := range []string{"ENVIRONMENT", "KROOT_LOG_LEVEL", "debug, info, warn, error", `"info"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("program page does not contain %q:\n%s", want, got)
+		}
+	}
+
+	if page := renderManual(t, manualProgram(t), "version", info); strings.Contains(page, "ENVIRONMENT") {
+		t.Errorf("command page repeats the program's environment section:\n%s", page)
+	}
+}
+
+// TestEnvironmentDefinitionOmitsClausesItHasNothingToSay keeps the sentence
+// honest for the shapes a variable can have: one with no vocabulary, and one
+// with no default. A fragment like "One of: ." is what the clauses exist to
+// avoid.
+func TestEnvironmentDefinitionOmitsClausesItHasNothingToSay(t *testing.T) {
+	tests := []struct {
+		name string
+		env  EnvVar
+		want string
+	}{
+		{
+			name: "vocabulary and default",
+			env:  EnvVar{Name: "KROOT_LOG_LEVEL", Default: "info", Values: []string{"debug", "info"}},
+			want: `One of: debug, info. Unset means "info".`,
+		},
+		{
+			name: "default only",
+			env:  EnvVar{Name: "KROOT_HOME", Default: "~/.kroot"},
+			want: `Unset means "~/.kroot".`,
+		},
+		{
+			name: "vocabulary only",
+			env:  EnvVar{Name: "KROOT_MODE", Values: []string{"fast", "safe"}},
+			want: "One of: fast, safe.",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := envDefinition(tc.env); got != tc.want {
+				t.Errorf("envDefinition(%+v) = %q; want %q", tc.env, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestCommandPageIsNamedAfterItsCommand covers the man naming convention:
 // `kroot completion` documents as kroot-completion(1), so a reader who types
 // `man kroot-completion` finds the page they expect.
@@ -400,6 +463,37 @@ func TestProgramPageIsUnderstoodByARealRoffFormatter(t *testing.T) {
 	}
 }
 
+// TestEnvironmentSectionIsUnderstoodByARealRoffFormatter hands the new section to
+// the formatter rather than trusting that it renders. Its definition carries a
+// quoted default — the one piece of punctuation a .TP body normally never sees —
+// and the risk being checked is that lint rejects the page or the formatter
+// drops the vocabulary, neither of which an assertion on the source can show.
+func TestEnvironmentSectionIsUnderstoodByARealRoffFormatter(t *testing.T) {
+	requireTool(t, "mandoc")
+
+	info := testInfo()
+	info.Env = []EnvVar{
+		{Name: "KROOT_LOG_LEVEL", Default: "info", Values: []string{"debug", "info", "warn", "error"}},
+	}
+
+	page := renderManual(t, manualProgram(t), "", info)
+	path := writePage(t, page)
+
+	if out, err := runMandoc(t, "-T", "lint", path); err != nil {
+		t.Fatalf("mandoc -T lint rejected the page: %v\n%s\npage:\n%s", err, out, page)
+	}
+
+	tree, err := runMandoc(t, "-T", "tree", path)
+	if err != nil {
+		t.Fatalf("mandoc could not parse the page: %v\n%s", err, tree)
+	}
+	for _, want := range []string{"ENVIRONMENT", "KROOT_LOG_LEVEL", "debug, info, warn, error"} {
+		if !strings.Contains(tree, want) {
+			t.Errorf("parsed page does not contain %q:\n%s", want, tree)
+		}
+	}
+}
+
 // countWriter counts the writes a successful generation makes, so a test can
 // learn how many stages there are to fail.
 type countWriter struct {
@@ -454,27 +548,51 @@ func TestWriteManualReportsAFailureAtEveryStage(t *testing.T) {
 			name = "program"
 		}
 		t.Run(name, func(t *testing.T) {
-			count := &countWriter{}
-			if err := WriteManual(count, p, command, info); err != nil {
-				t.Fatalf("WriteManual(%q) error = %v; want nil", command, err)
+			walkEveryWriteFails(t, p, command, info)
+
+			// The ENVIRONMENT section renders only when the info documents a
+			// variable, so the walk above never reaches its two error returns.
+			// A walk is bounded by its own fixture, and this one is not.
+			withEnv := testInfo()
+			withEnv.Env = []EnvVar{
+				{Name: "KROOT_LOG_LEVEL", Default: "info", Values: []string{"debug", "info"}},
 			}
-
-			// remaining = n lets writes 1..n through and fails write n+1, so the
-			// range covers a failure at every write the page actually makes.
-			for n := range count.writes {
-				w := &failAfterWriter{remaining: n}
-
-				err := WriteManual(w, p, command, info)
-
-				if err == nil {
-					t.Fatalf("WriteManual(%q) = nil when the destination failed on write %d of %d; a truncated page must be reported",
-						command, n+1, count.writes)
-				}
-				if !strings.Contains(err.Error(), "write failed") {
-					t.Errorf("WriteManual(%q) error = %v; want it to wrap the underlying failure", command, err)
-				}
-			}
+			walkEveryWriteFails(t, p, command, withEnv)
 		})
+	}
+}
+
+// walkEveryWriteFails requires WriteManual to report a destination failure at
+// every write one page makes, counting the writes a successful render takes.
+//
+// The count comes from a successful render rather than a constant, so a stage
+// added to the page is walked the day it is added and not the day someone
+// remembers the number is stale.
+func walkEveryWriteFails(t *testing.T, p *Program, command string, info ManualInfo) {
+	t.Helper()
+
+	count := &countWriter{}
+	if err := WriteManual(count, p, command, info); err != nil {
+		t.Fatalf("WriteManual(%q) error = %v; want nil", command, err)
+	}
+	if count.writes == 0 {
+		t.Fatalf("WriteManual(%q) wrote nothing; the walk below would prove nothing", command)
+	}
+
+	// remaining = n lets writes 1..n through and fails write n+1, so the range
+	// covers a failure at every write the page actually makes.
+	for n := range count.writes {
+		w := &failAfterWriter{remaining: n}
+
+		err := WriteManual(w, p, command, info)
+
+		if err == nil {
+			t.Fatalf("WriteManual(%q) = nil when the destination failed on write %d of %d; a truncated page must be reported",
+				command, n+1, count.writes)
+		}
+		if !strings.Contains(err.Error(), "write failed") {
+			t.Errorf("WriteManual(%q) error = %v; want it to wrap the underlying failure", command, err)
+		}
 	}
 }
 
@@ -496,7 +614,7 @@ func TestManualOmitsSectionsItHasNothingFor(t *testing.T) {
 	}
 
 	got := buf.String()
-	for _, unwanted := range []string{"OPTIONS", "EXIT STATUS"} {
+	for _, unwanted := range []string{"OPTIONS", "ENVIRONMENT", "EXIT STATUS"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("page contains a %s section with nothing in it:\n%s", unwanted, got)
 		}

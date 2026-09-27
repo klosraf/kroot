@@ -67,6 +67,24 @@ func (p *Program) CommandHelp(w io.Writer, c Command) error {
 	return nil
 }
 
+// UnknownCommand reports a command name the program does not have.
+//
+// The registry's rejection is the whole answer when it offered a near miss,
+// because that suggestion is itself the recovery. When nothing was close, the
+// caller is told what they typed and left with no next step at all, so the
+// program's own command list is named instead — the one failure a reader cannot
+// act on is the one with nothing to try next.
+//
+// Only the program knows how it is invoked, which is why this lives here and
+// not in the registry.
+func (p *Program) UnknownCommand(name string) error {
+	err := p.Commands.Error(name)
+	if len(p.Commands.Suggestions(name)) > 0 {
+		return err
+	}
+	return fmt.Errorf("%w; see %q for the command list", err, p.Name+" help")
+}
+
 // writeCommandList writes one line per command, sorted by name and padded so
 // the summaries line up. The padding is computed from the longest name rather
 // than hard-coded, so adding a command cannot misalign the list.

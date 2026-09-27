@@ -34,6 +34,14 @@ const maxSuggestionDistance = 2
 // maxSuggestions bounds the list so a bad guess cannot bury the actual error.
 const maxSuggestions = 3
 
+// designWidth is the column budget for a line a person reads: an 80-column
+// terminal, a man page source line, a README diff. It is enforced twice on
+// purpose — here, so a command nobody can describe in one line is rejected where
+// the mistake is made, and in the rendering test, so this number and
+// Program.writeCommandList cannot drift apart without a failure. A budget nothing
+// enforces is a wish.
+const designWidth = 80
+
 // Env carries everything a command is allowed to touch. Passing writers rather
 // than reaching for the process streams is what makes a command's output
 // assertable in a test.
@@ -68,6 +76,32 @@ type Command struct {
 	Long string
 	// Run is the behaviour. It must not be nil.
 	Run RunFunc
+	// Operands declares what the command accepts in its first operand position,
+	// so a shell can offer it there instead of declining. It is completion data,
+	// not validation: dispatch never reads it, so it must describe the
+	// invocation Usage already shows rather than enforce it. The zero value
+	// means the command takes no operand, and the generators decline.
+	Operands Operands
+}
+
+// Operands is what a command accepts in its first operand position, for shell
+// completion only.
+//
+// Exactly one source per position: either Values, a closed vocabulary such as the
+// supported shells, or CommandNames, the registry's own names — which is what
+// `help` and `man` take. Declaring both is a programmer error the registry
+// rejects; declaring neither is a command that takes nothing.
+//
+// The first operand is the only one modelled, because it is the only one any
+// current command accepts. A command that grows a second operand declares its
+// first here and its second in the same way, rather than the generators guessing
+// positions they do not know.
+type Operands struct {
+	// Values is a closed vocabulary this position accepts, e.g. Shells.
+	Values []string
+
+	// CommandNames asks for the registry's command names instead of Values.
+	CommandNames bool
 }
 
 // Registry is a validated set of commands. Registration order is irrelevant:
@@ -93,11 +127,41 @@ func New(commands ...Command) (*Registry, error) {
 			return nil, fmt.Errorf("command %q has no summary: the command list and completion both need one", c.Name)
 		case c.Run == nil:
 			return nil, fmt.Errorf("command %q has no Run function", c.Name)
+		case c.Operands.CommandNames && len(c.Operands.Values) > 0:
+			// Caught here rather than in a generator: by the time a shell script
+			// exists the contradiction is already baked into a file someone
+			// installed, and a shell is a poor place to report a programmer error.
+			return nil, fmt.Errorf("command %q declares both an operand vocabulary and the command names: the position accepts one or the other", c.Name)
 		}
 		if _, exists := r.byName[c.Name]; exists {
 			return nil, fmt.Errorf("command %q is registered twice", c.Name)
 		}
 		r.byName[c.Name] = c
+	}
+
+	// The command list is the widest place a name and a summary stand side by
+	// side: two leading spaces, the name padded out to the longest name plus two,
+	// then the summary. Checking it here means a command nobody can describe in
+	// one line is caught at construction rather than rendered into a list that
+	// needs horizontal scrolling to read.
+	//
+	// The two maxima are paired, which is deliberately conservative: this is the
+	// width as though the longest name and the longest summary belonged to the
+	// same command. A bound that is never too small is a bound that holds, and
+	// the real command set has 15 columns to spare.
+	var longestName, longestSummary string
+	for _, c := range r.byName {
+		if len(c.Name) > len(longestName) {
+			longestName = c.Name
+		}
+		if len(c.Summary) > len(longestSummary) {
+			longestSummary = c.Summary
+		}
+	}
+	if width := 2 + len(longestName) + 2 + len(longestSummary); width > designWidth {
+		return nil, fmt.Errorf(
+			"the command list would render %d columns wide, over the design width of %d: shorten the longest command name (%d characters) or the longest summary (%d characters)",
+			width, designWidth, len(longestName), len(longestSummary))
 	}
 
 	return r, nil
