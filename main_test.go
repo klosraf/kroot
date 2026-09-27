@@ -404,6 +404,45 @@ func TestRunFailsFastWhenShutdownIsUnderway(t *testing.T) {
 	}
 }
 
+// The count and the ErrUsage wrapping are asserted alongside the recovery, so a
+// fix that softens the message cannot quietly drop the contract.
+func TestArityFailuresNameTheCorrectForm(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "help", args: []string{"help", "a", "b"}, want: `see "kroot help <command>"`},
+		{name: "man", args: []string{"man", "a", "b"}, want: `see "kroot man <command>"`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+
+			err := run(context.Background(), tc.args, &stdout, io.Discard)
+			if err == nil {
+				t.Fatalf("run(%v) = nil; want a usage error", tc.args)
+			}
+			if !errors.Is(err, cli.ErrUsage) {
+				t.Errorf("run(%v) error = %v; want it to match ErrUsage", tc.args, err)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("run(%v) error = %q; want it to name the next step %s", tc.args, err, tc.want)
+			}
+			if !strings.Contains(err.Error(), "got 2") {
+				t.Errorf("run(%v) error = %q; want it to keep the count of what arrived", tc.args, err)
+			}
+			// A caller that redirects stdout must not capture usage text from a
+			// failure: the help it would have received is the answer, but a
+			// diagnostic on stdout is a broken pipe for anything downstream.
+			if got := stdout.String(); got != "" {
+				t.Errorf("run(%v) wrote %q to stdout; want nothing on the failure path", tc.args, got)
+			}
+		})
+	}
+}
+
 // TestCompletionScriptReachesStdoutAndNothingElse covers the stream half of the
 // contract for the generated script. The script is what the caller asked for, so
 // it belongs on stdout and stderr must stay empty — otherwise a caller

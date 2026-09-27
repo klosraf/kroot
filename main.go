@@ -366,7 +366,17 @@ func runHelp(program *cli.Program, env cli.Env) error {
 		// Rejecting rather than ignoring: silently dropping the extra operand
 		// would hide a real mistake, and api-compatibility.md ties a bad
 		// argument to exit 2.
-		return fmt.Errorf("%w: help takes at most one command name, got %d", cli.ErrUsage, len(env.Args))
+		// Rejecting rather than ignoring: silently dropping the extra operand
+		// would hide a real mistake, and api-compatibility.md ties a bad
+		// argument to exit 2.
+		//
+		// The message names the correct form, because a rejection that only says
+		// what was wrong leaves the caller with nothing to try. Every other
+		// failure on this path already ends in a next step — a near miss, the
+		// command list, the command's own help — and arity was the one that did
+		// not, which made it the only failure here a reader could not act on.
+		return fmt.Errorf("%w: help takes at most one command name, got %d: see %q",
+			cli.ErrUsage, len(env.Args), program.Name+" help <command>")
 	}
 
 	command, ok := program.Commands.Lookup(env.Args[0])
@@ -387,10 +397,12 @@ func runHelp(program *cli.Program, env cli.Env) error {
 //
 // More than one operand is rejected rather than ignored, matching help: a
 // silently dropped argument hides a real mistake, and api-compatibility.md ties a
-// bad argument to exit code 2.
+// bad argument to exit code 2. The rejection names the correct form, for the same
+// reason help's does.
 func runMan(program *cli.Program, env cli.Env) error {
 	if len(env.Args) > 1 {
-		return fmt.Errorf("%w: man takes at most one command name, got %d", cli.ErrUsage, len(env.Args))
+		return fmt.Errorf("%w: man takes at most one command name, got %d: see %q",
+			cli.ErrUsage, len(env.Args), program.Name+" man <command>")
 	}
 
 	name := ""
