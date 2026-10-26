@@ -13,7 +13,7 @@
     "commits:range": "commitlint --from \"${FROM:-HEAD~1}\" --to \"${TO:-HEAD}\" --verbose"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.2.3",
+    "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.3"
   }
 }
